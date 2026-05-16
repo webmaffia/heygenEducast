@@ -1,4 +1,4 @@
-import { AbsoluteFill, Sequence, useVideoConfig, Video, Img, useCurrentFrame, interpolate } from 'remotion';
+import { AbsoluteFill, Sequence, useVideoConfig, Img, OffthreadVideo } from 'remotion';
 import { ScriptDisplay } from './ScriptDisplay';
 
 export const RemotionVideo: React.FC<{
@@ -8,21 +8,9 @@ export const RemotionVideo: React.FC<{
   durationInFrames: number;
 }> = ({ avatarVideoUrl, backgroundImageUrl, script, durationInFrames }) => {
   const { width, height } = useVideoConfig();
-  const frame = useCurrentFrame();
   
   const avatarWidth = width * 0.3;
   const scriptAreaWidth = width * 0.7;
-
-  const words = script.split(/\s+/).filter((w) => w.length > 0);
-  const totalWords = words.length;
-  
-  const progress = interpolate(frame, [0, durationInFrames], [0, 1], {
-    extrapolateRight: 'clamp',
-  });
-  
-  const currentWordIndexFloat = progress * totalWords;
-  const currentWordIndex = Math.floor(currentWordIndexFloat);
-  const wordProgress = currentWordIndexFloat - currentWordIndex;
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
@@ -61,9 +49,8 @@ export const RemotionVideo: React.FC<{
             justifyContent: 'center',
           }}
         >
-          <Video
+          <OffthreadVideo
             src={avatarVideoUrl}
-            crossOrigin="anonymous"
             style={{
               width: '100%',
               height: '100%',
@@ -78,9 +65,6 @@ export const RemotionVideo: React.FC<{
           script={script}
           avatarWidth={avatarWidth}
           scriptAreaWidth={scriptAreaWidth}
-          currentWordIndex={currentWordIndex}
-          wordProgress={wordProgress}
-          totalWords={totalWords}
           height={height}
         />
       </Sequence>
