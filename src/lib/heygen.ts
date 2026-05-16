@@ -86,12 +86,32 @@ export async function createVideo(payload: {
   });
 }
 
+export async function createWebMVideo(payload: {
+  avatar_pose_id: string;
+  voice_id: string;
+  input_text: string;
+  avatar_style?: 'normal' | 'closeUp';
+  dimension?: { width: number; height: number };
+}) {
+  return heygenFetch<{ data: { video_id: string } }>('/v1/video.webm', {
+    method: 'POST',
+    body: JSON.stringify({
+      avatar_pose_id: payload.avatar_pose_id,
+      avatar_style: payload.avatar_style || 'normal',
+      input_text: payload.input_text,
+      voice_id: payload.voice_id,
+      ...(payload.dimension && { dimension: payload.dimension }),
+    }),
+  });
+}
+
 export async function getVideoStatus(videoId: string) {
   return heygenFetch<{
     code: number;
     data: {
       status: string;
       video_url?: string;
+      video_url_webm?: string;
       thumbnail_url?: string;
       gif_url?: string;
       error: {

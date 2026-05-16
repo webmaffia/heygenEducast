@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Player, PlayerRef } from '@remotion/player';
+import { RemotionVideo } from '@/remotion/VideoComposition';
 
 async function extractPdfText(file: File): Promise<string> {
   const pdfjsLib = await import('pdfjs-dist');
@@ -49,6 +51,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
+  const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
+  const [rendering, setRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
+  const playerRef = useRef<PlayerRef>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -83,7 +91,7 @@ export default function Home() {
       setStatus(data.data.status);
 
       if (data.data.status === 'completed') {
-        setVideoUrl(data.data.video_url || null);
+        setVideoUrl(data.data.video_url_webm || data.data.video_url || null);
         setLoading(false);
       } else if (data.data.status === 'failed') {
         setError(data.data.error?.message || data.data.error?.detail || 'Video generation failed');
@@ -102,6 +110,7 @@ export default function Home() {
     setError(null);
     setVideoUrl(null);
     setVideoId(null);
+    setRenderedVideoUrl(null);
     setLoading(true);
 
     try {
@@ -113,6 +122,9 @@ export default function Home() {
           voice_id: selectedVoice,
           input_text: script,
           title: document?.name || 'Generated Video',
+          type: 'webm',
+          avatar_style: 'normal',
+          dimension: { width: 1080, height: 1920 },
         }),
       });
 
@@ -127,6 +139,38 @@ export default function Home() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate video');
       setLoading(false);
+    }
+  }
+
+  async function handleRenderVideo() {
+    if (!videoUrl || !backgroundImage || !script) return;
+
+    setRendering(true);
+    setRenderProgress(0);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          avatarVideoUrl: videoUrl,
+          backgroundImageUrl: backgroundImage,
+          script: script,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setRenderedVideoUrl(data.videoUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to render video');
+    } finally {
+      setRendering(false);
     }
   }
 
@@ -167,6 +211,29 @@ export default function Home() {
     }
   }
 
+  function handleBackgroundImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    if (!isImage) {
+      setError('Please upload a valid image file.');
+      return;
+    }
+
+    setBackgroundFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setBackgroundImage(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const words = script.split(/\s+/).filter(w => w.length > 0);
+  const wordsPerSecond = 2.5;
+  const estimatedDurationSeconds = Math.ceil(words.length / wordsPerSecond) + 2;
+  const durationInFrames = Math.max(estimatedDurationSeconds * 30, 90);
+
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-[#0A0A0F] to-[#0A0A0F]" />
@@ -176,13 +243,13 @@ export default function Home() {
         <div className="text-center mb-16 space-y-4">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-xl text-sm font-medium text-indigo-300 mb-4">
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-            Powered by HeyGen AI
+            Powered by HeyGen AI + Remotion
           </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
             AI Video Generator
           </h1>
           <p className="text-xl text-zinc-400 max-w-2xl mx-auto">
-            Transform your documents into engaging AI avatar videos in seconds
+            Transform your documents into engaging AI avatar videos with custom backgrounds
           </p>
         </div>
 
@@ -210,6 +277,30 @@ export default function Home() {
                   </div>
                   {extracting && (
                     <p className="text-sm text-indigo-400 mt-2 animate-pulse">Extracting text from PDF...</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Background Image
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBackgroundImageChange}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-center w-full h-24 border-2 border-dashed border-white/10 rounded-xl hover:border-indigo-500/50 transition-colors bg-white/5">
+                      <p className="text-zinc-400 text-sm">
+                        {backgroundFile ? backgroundFile.name : 'Upload background image'}
+                      </p>
+                    </div>
+                  </div>
+                  {backgroundImage && (
+                    <div className="mt-2 rounded-xl overflow-hidden border border-white/10">
+                      <img src={backgroundImage} alt="Background" className="w-full h-32 object-cover" />
+                    </div>
                   )}
                 </div>
 
@@ -289,9 +380,9 @@ export default function Home() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
-                      Generating...
+                      Generating Avatar Video...
                     </span>
-                  ) : 'Generate Video'}
+                  ) : 'Generate Avatar Video'}
                 </button>
               </form>
 
@@ -322,33 +413,112 @@ export default function Home() {
                 Preview
               </h2>
 
-              {videoUrl ? (
+              {renderedVideoUrl ? (
                 <div className="space-y-4">
-                  <div className="rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                  <div className="rounded-xl overflow-hidden border border-green-500/30 shadow-lg">
                     <video
-                      src={videoUrl}
+                      src={renderedVideoUrl}
                       controls
-                      className="w-full bg-black"
+                      className="w-full"
                     />
                   </div>
-                  <a
-                    href={videoUrl}
-                    download
-                    className="flex items-center justify-center gap-2 w-full bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-xl font-medium transition-all border border-white/10"
+                  <div className="flex gap-2">
+                    <a
+                      href={renderedVideoUrl}
+                      download
+                      className="flex items-center justify-center gap-2 flex-1 bg-green-600 hover:bg-green-500 text-white py-3 px-6 rounded-xl font-medium transition-all"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download Final Video
+                    </a>
+                  </div>
+                  <button
+                    onClick={handleRenderVideo}
+                    disabled={rendering}
+                    className="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-xl font-medium transition-all border border-white/10"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download Video
-                  </a>
+                    Re-render Video
+                  </button>
+                </div>
+              ) : videoUrl && backgroundImage ? (
+                <div className="space-y-4">
+                  <div className="text-xs text-indigo-400 mb-1">Preview - Avatar + Background + Script</div>
+                  <div className="rounded-xl overflow-hidden border border-white/10 shadow-lg">
+                    <Player
+                      key={videoUrl}
+                      ref={playerRef}
+                      component={RemotionVideo}
+                      durationInFrames={durationInFrames}
+                      fps={30}
+                      compositionWidth={1920}
+                      compositionHeight={1080}
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                      }}
+                      inputProps={{
+                        avatarVideoUrl: videoUrl,
+                        backgroundImageUrl: backgroundImage,
+                        script: script,
+                      }}
+                      controls
+                    />
+                  </div>
+                  <button
+                    onClick={handleRenderVideo}
+                    disabled={rendering}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white py-4 px-6 rounded-xl font-semibold shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {rendering ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Rendering Video... {renderProgress}%
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Render Final Video (MP4)
+                      </span>
+                    )}
+                  </button>
+                </div>
+              ) : backgroundImage && script ? (
+                <div className="space-y-4">
+                  <div className="text-xs text-zinc-500 mb-2">Live Preview (generate avatar first)</div>
+                  <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-lg" style={{ aspectRatio: '16/9' }}>
+                    <img src={backgroundImage} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
+                    <div className="absolute left-[30%] top-0 w-[70%] h-full bg-black/60" />
+                    <div className="absolute left-0 top-0 w-[30%] h-full flex items-center justify-center">
+                      <div className="text-zinc-500 text-xs text-center px-2">Avatar will appear here</div>
+                    </div>
+                    <div className="absolute left-[30%] top-0 w-[70%] h-full p-6 overflow-hidden">
+                      <div className="text-white text-sm leading-relaxed line-clamp-6">
+                        {script}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={loading || !script || !selectedAvatar || !selectedVoice}
+                    className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white py-3 px-6 rounded-xl font-medium shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {loading ? 'Generating Avatar...' : 'Generate Avatar Video'}
+                  </button>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-80 border-2 border-dashed border-white/10 rounded-xl bg-white/5">
                   <svg className="w-16 h-16 text-zinc-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  <p className="text-zinc-500 text-sm">
-                    {loading ? 'Generating your video...' : 'Your video will appear here'}
+                  <p className="text-zinc-500 text-sm text-center px-4">
+                    {loading ? 'Generating avatar video...' : !backgroundImage ? 'Upload a background image to preview' : 'Your video will appear here'}
                   </p>
                   {loading && (
                     <div className="mt-4 w-32 h-1 bg-white/10 rounded-full overflow-hidden">
