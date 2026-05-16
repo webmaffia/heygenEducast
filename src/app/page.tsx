@@ -187,11 +187,17 @@ export default function Home() {
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`Render failed: ${response.status} ${response.statusText}`);
+      }
+
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let isDone = false;
+      let receivedVideoUrl = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -205,25 +211,36 @@ export default function Home() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
+              console.log('SSE data:', data);
               if (data.progress !== undefined) {
                 setRenderProgress(data.progress);
               }
               if (data.videoUrl) {
+                receivedVideoUrl = data.videoUrl;
                 setRenderedVideoUrl(data.videoUrl);
               }
-            } catch {
-              // ignore parse errors
+              if (data.done) {
+                isDone = true;
+              }
+            } catch (e) {
+              console.error('SSE parse error:', e);
             }
           }
         }
+
+        if (isDone) break;
+      }
+
+      if (!receivedVideoUrl) {
+        throw new Error('Rendering completed but no video URL received');
       }
     } catch (err) {
+      console.error('Render error:', err);
       setError(err instanceof Error ? err.message : 'Failed to render video');
     } finally {
       setRendering(false);
     }
   }
-
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] || null;
     console.log('File selected:', file?.name, file?.type, file?.size);

@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
         outputLocation: outputLocation,
         onProgress: (progress) => {
           const pct = Math.round(20 + progress.progress * 80);
-          sendProgress(pct, `Rendering: ${pct}%`);
+          writer.write(encoder.encode(`data: ${JSON.stringify({ progress: pct, message: `Rendering: ${pct}%` })}\n\n`)).catch(() => {});
         },
       });
 
       await sendProgress(100, 'Video rendered successfully!');
-      await sendProgress(100, JSON.stringify({ videoUrl: `/generated-videos/${videoId}.mp4`, videoId }));
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ progress: 100, done: true, videoUrl: `/generated-videos/${videoId}.mp4`, videoId })}\n\n`));
     } catch (error) {
       await sendProgress(0, `Error: ${error instanceof Error ? error.message : 'Failed to render video'}`);
     } finally {
