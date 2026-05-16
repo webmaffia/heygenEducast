@@ -25,15 +25,38 @@ export async function heygenFetch<T>(
 }
 
 export async function listAvatars() {
-  return heygenFetch<{ data: { avatars: { avatar_id: string; name: string }[] } }>(
-    '/v2/avatars'
-  );
+  return heygenFetch<{
+    data: {
+      avatars: {
+        avatar_id: string;
+        avatar_name: string;
+        gender: string;
+        preview_image_url: string;
+        preview_video_url: string;
+        premium: boolean;
+        default_voice_id: string | null;
+      }[];
+      talking_photos: {
+        talking_photo_id: string;
+        talking_photo_name: string;
+        preview_image_url: string;
+      }[];
+    };
+  }>('/v2/avatars');
 }
 
 export async function listVoices() {
-  return heygenFetch<{ data: { voices: { voice_id: string; name: string }[] } }>(
-    '/v2/voices'
-  );
+  return heygenFetch<{
+    data: {
+      voices: {
+        voice_id: string;
+        name: string;
+        language: string;
+        gender: string;
+        preview_audio: string;
+      }[];
+    };
+  }>('/v2/voices');
 }
 
 export async function createVideo(payload: {
@@ -65,11 +88,18 @@ export async function createVideo(payload: {
 
 export async function getVideoStatus(videoId: string) {
   return heygenFetch<{
+    code: number;
     data: {
       status: string;
       video_url?: string;
       thumbnail_url?: string;
-      error?: string;
+      gif_url?: string;
+      error: {
+        code: number;
+        detail: string;
+        message: string;
+      } | null;
     };
+    message: string;
   }>(`/v1/video_status.get?video_id=${videoId}`);
 }
