@@ -56,7 +56,9 @@ export default function Home() {
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
+  const [videoDurationInFrames, setVideoDurationInFrames] = useState(900);
   const playerRef = useRef<PlayerRef>(null);
+  const videoDurationRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -91,7 +93,22 @@ export default function Home() {
       setStatus(data.data.status);
 
       if (data.data.status === 'completed') {
-        setVideoUrl(data.data.video_url_webm || data.data.video_url || null);
+        const url = data.data.video_url_webm || data.data.video_url || null;
+        setVideoUrl(url);
+        
+        if (url) {
+          const video = globalThis.document.createElement('video');
+          video.preload = 'metadata';
+          video.src = url;
+          video.onloadedmetadata = () => {
+            const duration = Math.ceil(video.duration * 30);
+            setVideoDurationInFrames(duration);
+          };
+          video.onerror = () => {
+            setVideoDurationInFrames(900);
+          };
+        }
+        
         setLoading(false);
       } else if (data.data.status === 'failed') {
         setError(data.data.error?.message || data.data.error?.detail || 'Video generation failed');
@@ -157,6 +174,7 @@ export default function Home() {
           avatarVideoUrl: videoUrl,
           backgroundImageUrl: backgroundImage,
           script: script,
+          durationInFrames: videoDurationInFrames,
         }),
       });
 
@@ -228,11 +246,6 @@ export default function Home() {
     };
     reader.readAsDataURL(file);
   }
-
-  const words = script.split(/\s+/).filter(w => w.length > 0);
-  const wordsPerSecond = 2.5;
-  const estimatedDurationSeconds = Math.ceil(words.length / wordsPerSecond) + 2;
-  const durationInFrames = Math.max(estimatedDurationSeconds * 30, 90);
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white relative overflow-hidden">
@@ -450,7 +463,7 @@ export default function Home() {
                       key={videoUrl}
                       ref={playerRef}
                       component={RemotionVideo}
-                      durationInFrames={durationInFrames}
+                      durationInFrames={videoDurationInFrames}
                       fps={30}
                       compositionWidth={1920}
                       compositionHeight={1080}

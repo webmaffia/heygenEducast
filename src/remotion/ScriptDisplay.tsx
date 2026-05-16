@@ -1,22 +1,16 @@
-import { useCurrentFrame, useVideoConfig } from 'remotion';
-
 export const ScriptDisplay: React.FC<{
   script: string;
   avatarWidth: number;
   scriptAreaWidth: number;
-}> = ({ script, avatarWidth, scriptAreaWidth }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames, height } = useVideoConfig();
-
-  const words = script.split(/\s+/).filter(w => w.length > 0);
-  const totalWords = words.length;
-  
-  const wordsPerFrame = totalWords / durationInFrames;
-  const currentWordIndex = Math.floor(frame * wordsPerFrame);
+  currentWordIndex: number;
+  totalWords: number;
+  height: number;
+}> = ({ script, avatarWidth, scriptAreaWidth, currentWordIndex, totalWords, height }) => {
+  const words = script.split(/\s+/).filter((w) => w.length > 0);
   
   const lines: string[] = [];
   let currentLine = '';
-  const charsPerLine = Math.floor(scriptAreaWidth / 22);
+  const charsPerLine = Math.floor(scriptAreaWidth / 20);
   
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
@@ -33,11 +27,20 @@ export const ScriptDisplay: React.FC<{
     lines.push(currentLine);
   }
 
-  const totalLines = lines.length;
   const lineHeight = 52;
   const visibleLines = Math.floor(height / lineHeight);
   
-  const currentLineIndex = Math.floor(currentWordIndex / (totalWords / totalLines));
+  let wordCount = 0;
+  const lineWordMap: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const lineWords = lines[i].split(/\s+/).length;
+    for (let j = 0; j < lineWords; j++) {
+      lineWordMap.push(i);
+    }
+    wordCount += lineWords;
+  }
+  
+  const currentLineIndex = lineWordMap[Math.min(currentWordIndex, lineWordMap.length - 1)] || 0;
   const scrollStartLine = Math.max(0, currentLineIndex - Math.floor(visibleLines / 3));
   const scrollOffset = -scrollStartLine * lineHeight;
 
@@ -57,29 +60,32 @@ export const ScriptDisplay: React.FC<{
       <div
         style={{
           transform: `translateY(${scrollOffset}px)`,
-          transition: 'transform 0.3s ease-out',
         }}
       >
         {lines.map((line, lineIndex) => {
-          const lineStartWord = lines.slice(0, lineIndex).reduce((sum, l) => sum + l.split(/\s+/).length, 0);
-          const lineWordCount = line.split(/\s+/).length;
-          const lineEndWord = lineStartWord + lineWordCount;
+          const lineWords = line.split(/\s+/);
+          let globalWordStart = 0;
+          for (let i = 0; i < lineIndex; i++) {
+            globalWordStart += lines[i].split(/\s+/).length;
+          }
           
-          const isCurrentLine = lineIndex >= scrollStartLine && lineIndex < scrollStartLine + visibleLines;
-          const isHighlighted = currentWordIndex >= lineStartWord && currentWordIndex < lineEndWord;
+          const isCurrentLine = Math.abs(lineIndex - currentLineIndex) <= visibleLines;
           
-          const highlightedWords = line.split(/\s+/).map((word, wordIndex) => {
-            const globalWordIndex = lineStartWord + wordIndex;
+          const highlightedWords = lineWords.map((word, wordIndex) => {
+            const globalWordIndex = globalWordStart + wordIndex;
             const isCurrentWord = globalWordIndex === currentWordIndex;
+            const isPastWord = globalWordIndex < currentWordIndex;
             
             return (
               <span
                 key={wordIndex}
                 style={{
-                  color: isCurrentWord ? '#818cf8' : '#ffffff',
+                  color: isCurrentWord ? '#818cf8' : isPastWord ? '#d1d5db' : '#ffffff',
                   fontWeight: isCurrentWord ? 'bold' : 'normal',
                   marginRight: '8px',
                   display: 'inline',
+                  fontSize: isCurrentWord ? '32px' : '28px',
+                  transition: 'all 0.15s ease-out',
                 }}
               >
                 {word}
@@ -91,11 +97,10 @@ export const ScriptDisplay: React.FC<{
             <div
               key={lineIndex}
               style={{
-                fontSize: '28px',
                 fontFamily: 'Inter, Arial, sans-serif',
                 lineHeight: '1.8',
                 marginBottom: '8px',
-                opacity: isCurrentLine ? 1 : 0.3,
+                opacity: isCurrentLine ? 1 : 0.2,
                 minHeight: lineHeight,
               }}
             >

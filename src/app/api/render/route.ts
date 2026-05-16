@@ -13,7 +13,7 @@ if (!fs.existsSync(VIDEOS_DIR)) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { avatarVideoUrl, backgroundImageUrl, script } = body;
+    const { avatarVideoUrl, backgroundImageUrl, script, durationInFrames } = body;
 
     if (!avatarVideoUrl || !backgroundImageUrl || !script) {
       return NextResponse.json(
@@ -22,11 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const words: string[] = script.split(/\s+/).filter((w: string) => w.length > 0);
-    const wordsPerSecond = 2.5;
-    const estimatedDurationSeconds = Math.ceil(words.length / wordsPerSecond) + 2;
-    const durationInFrames = Math.max(estimatedDurationSeconds * 30, 90);
-
+    const frames = durationInFrames || 900;
     const videoId = `video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const outputLocation = path.join(VIDEOS_DIR, `${videoId}.mp4`);
 
@@ -49,9 +45,12 @@ export async function POST(request: NextRequest) {
       throw new Error('Composition "AvatarVideo" not found');
     }
 
-    console.log('Rendering video...');
+    console.log(`Rendering video: ${frames} frames (${(frames / 30).toFixed(1)}s)...`);
     await renderMedia({
-      composition,
+      composition: {
+        ...composition,
+        durationInFrames: frames,
+      },
       serveUrl: bundled,
       codec: 'h264',
       outputLocation: outputLocation,
