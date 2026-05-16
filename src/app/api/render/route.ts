@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
           avatarVideoUrl,
           backgroundImageUrl,
           script,
+          durationInFrames: frames,
         },
       });
 

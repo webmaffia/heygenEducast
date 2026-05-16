@@ -516,6 +516,7 @@ export default function Home() {
                         avatarVideoUrl: videoUrl,
                         backgroundImageUrl: backgroundImage,
                         script: script,
+                        durationInFrames: videoDurationInFrames,
                       }}
                       controls
                     />
