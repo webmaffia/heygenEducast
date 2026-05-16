@@ -59,6 +59,7 @@ export default function Home() {
   const [videoDurationInFrames, setVideoDurationInFrames] = useState(900);
   const playerRef = useRef<PlayerRef>(null);
   const videoDurationRef = useRef<HTMLVideoElement | null>(null);
+  const [generateProgress, setGenerateProgress] = useState(0);
 
   useEffect(() => {
     async function fetchData() {
@@ -92,7 +93,15 @@ export default function Home() {
 
       setStatus(data.data.status);
 
+      const statusProgress: Record<string, number> = {
+        pending: 10,
+        waiting: 25,
+        processing: 60,
+      };
+      setGenerateProgress(statusProgress[data.data.status] || 50);
+
       if (data.data.status === 'completed') {
+        setGenerateProgress(100);
         const url = data.data.video_url_webm || data.data.video_url || null;
         setVideoUrl(url);
         
@@ -167,7 +176,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const res = await fetch('/api/render', {
+      const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,13 +187,36 @@ export default function Home() {
         }),
       });
 
-      const data = await res.json();
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
 
-      if (data.error) {
-        throw new Error(data.error);
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.progress !== undefined) {
+                setRenderProgress(data.progress);
+              }
+              if (data.videoUrl) {
+                setRenderedVideoUrl(data.videoUrl);
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
       }
-
-      setRenderedVideoUrl(data.videoUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to render video');
     } finally {
@@ -393,7 +425,7 @@ export default function Home() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
-                      Generating Avatar Video...
+                      Generating... {generateProgress}%
                     </span>
                   ) : 'Generate Avatar Video'}
                 </button>
@@ -407,9 +439,18 @@ export default function Home() {
 
               {status && status !== 'completed' && status !== 'failed' && (
                 <div className="mt-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 backdrop-blur-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                    <p className="text-indigo-400 text-sm">Status: {status}</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                      <p className="text-indigo-400 text-sm capitalize">{status}</p>
+                    </div>
+                    <p className="text-indigo-400 text-sm font-medium">{generateProgress}%</p>
+                  </div>
+                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500"
+                      style={{ width: `${generateProgress}%` }}
+                    />
                   </div>
                 </div>
               )}
@@ -490,7 +531,7 @@ export default function Home() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        Rendering Video... {renderProgress}%
+                        Rendering... {renderProgress}%
                       </span>
                     ) : (
                       <span className="flex items-center justify-center gap-2">
@@ -501,6 +542,14 @@ export default function Home() {
                       </span>
                     )}
                   </button>
+                  {rendering && (
+                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-300"
+                        style={{ width: `${renderProgress}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : backgroundImage && script ? (
                 <div className="space-y-4">
