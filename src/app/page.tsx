@@ -623,10 +623,7 @@ export default function Home() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12">
         <div className="text-center mb-16 space-y-4">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-xl text-sm font-medium text-indigo-300 mb-4">
-            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-            Powered by HeyGen AI + Remotion
-          </div>
+        
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
             AI Video Generator
           </h1>
