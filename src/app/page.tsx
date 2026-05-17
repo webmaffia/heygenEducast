@@ -51,6 +51,9 @@ interface SavedVideo {
   renderedVideoUrl: string;
   videoDurationInFrames: number;
   infographics: Infographic[];
+  status?: 'published' | 'draft';
+  subject?: string;
+  chapter?: string;
 }
 
 interface DragInfo {
@@ -60,6 +63,17 @@ interface DragInfo {
   isResizing: boolean;
   resizeEdge: string;
 }
+
+type SidebarItem =
+  | 'my-videos'
+  | 'create-new'
+  | 'drafts'
+  | 'browse-subjects'
+  | 'browse-chapters'
+  | 'manage-avatars'
+  | 'manage-users'
+  | 'billing'
+  | 'my-profile';
 
 export default function Home() {
   const [document, setDocument] = useState<File | null>(null);
@@ -106,8 +120,8 @@ export default function Home() {
   const [editStartFrame, setEditStartFrame] = useState(0);
   const [editEndFrame, setEditEndFrame] = useState(0);
   const [savedVideos, setSavedVideos] = useState<SavedVideo[]>([]);
-  const [showSavedVideos, setShowSavedVideos] = useState(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'saved'>('create');
+  const [activeSidebar, setActiveSidebar] = useState<SidebarItem>('my-videos');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -135,6 +149,9 @@ export default function Home() {
       renderedVideoUrl: renderedVideoUrl || '',
       videoDurationInFrames,
       infographics,
+      status: renderedVideoUrl ? 'published' : 'draft',
+      subject: 'Organic Chemistry',
+      chapter: 'Ch 2',
     };
 
     const updated = [savedVideo, ...savedVideos];
@@ -155,7 +172,7 @@ export default function Home() {
     setRenderedVideoUrl(video.renderedVideoUrl || null);
     setVideoDurationInFrames(video.videoDurationInFrames);
     setInfographics(video.infographics);
-    setActiveTab('create');
+    setActiveSidebar('create-new');
     setShowInfographicPanel(false);
     setNewInfographicImage(null);
     setPreviewInfographic(null);
@@ -177,9 +194,37 @@ export default function Home() {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
+  }
+
+  function formatDuration(frames: number) {
+    const seconds = Math.floor(frames / 30);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins} min ${secs} sec`;
+  }
+
+  function formatTime(frames: number) {
+    const seconds = Math.floor(frames / 30);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  function getTotalDuration() {
+    const totalSeconds = savedVideos.reduce((acc, v) => acc + v.videoDurationInFrames / 30, 0);
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    if (hours > 0) return `${hours}.${Math.round((mins / 60) * 10)}h`;
+    return `${mins}m`;
+  }
+
+  function getLastCreated() {
+    if (savedVideos.length === 0) return '—';
+    const sorted = [...savedVideos].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return formatDate(sorted[0].createdAt);
   }
 
   useEffect(() => {
@@ -609,723 +654,822 @@ export default function Home() {
     setRenderProgress(0);
   }
 
-  function formatTime(frames: number) {
-    const seconds = Math.floor(frames / 30);
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const publishedVideos = savedVideos.filter((v) => v.status === 'published');
+  const draftVideos = savedVideos.filter((v) => v.status !== 'published');
+  const uniqueSubjects = new Set(savedVideos.map((v) => v.subject).filter(Boolean)).size;
+
+  const sidebarItems: { key: SidebarItem; label: string; section: string; badge?: number; locked?: boolean }[] = [
+    { key: 'my-videos', label: 'My videos', section: 'MY WORK' },
+    { key: 'create-new', label: 'Create new video', section: 'MY WORK' },
+    { key: 'drafts', label: 'Drafts', section: 'MY WORK', badge: draftVideos.length },
+    { key: 'browse-subjects', label: 'Browse subjects', section: 'LIBRARY' },
+    { key: 'browse-chapters', label: 'Browse chapters', section: 'LIBRARY' },
+    { key: 'manage-avatars', label: 'Manage avatars', section: 'AVATARS' },
+    { key: 'manage-users', label: 'Manage users', section: 'SETTINGS', locked: true },
+    { key: 'billing', label: 'Billing', section: 'SETTINGS', locked: true },
+    { key: 'my-profile', label: 'My profile', section: 'SETTINGS' },
+  ];
+
+  const groupedSidebar = sidebarItems.reduce<Record<string, typeof sidebarItems>>((acc, item) => {
+    if (!acc[item.section]) acc[item.section] = [];
+    acc[item.section].push(item);
+    return acc;
+  }, {});
+
+  function renderMainContent() {
+    switch (activeSidebar) {
+      case 'my-videos':
+        return renderMyVideos();
+      case 'create-new':
+        return renderCreateNew();
+      case 'drafts':
+        return renderDrafts();
+      case 'manage-avatars':
+        return renderManageAvatars();
+      default:
+        return renderMyVideos();
+    }
   }
 
-  return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-[#0A0A0F] to-[#0A0A0F]" />
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20" />
-
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-12">
-        <div className="text-center mb-16 space-y-4">
-        
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
-            AI Video Generator
-          </h1>
-          <p className="text-xl text-zinc-400 max-w-2xl mx-auto">
-            Transform your documents into engaging AI avatar videos with custom backgrounds and infographics
-          </p>
-        </div>
-
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-1">
-            <button
-              onClick={() => setActiveTab('create')}
-              className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'create'
-                  ? 'bg-indigo-600 text-white shadow-lg'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Create New
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveTab('saved')}
-              className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'saved'
-                  ? 'bg-indigo-600 text-white shadow-lg'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                My Videos ({savedVideos.length})
-              </span>
-            </button>
+  function renderMyVideos() {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-[#1a1a24] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">My videos</p>
+            <p className="text-white text-2xl font-bold mt-1">{savedVideos.length}</p>
+            <p className="text-zinc-500 text-xs mt-1">Across {uniqueSubjects || 1} subjects</p>
+          </div>
+          <div className="bg-[#1a1a24] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">Published</p>
+            <p className="text-white text-2xl font-bold mt-1">{publishedVideos.length}</p>
+            <p className="text-zinc-500 text-xs mt-1">{draftVideos.length} drafts</p>
+          </div>
+          <div className="bg-[#1a1a24] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">Total duration</p>
+            <p className="text-white text-2xl font-bold mt-1">{getTotalDuration()}</p>
+            <p className="text-zinc-500 text-xs mt-1">Content created</p>
+          </div>
+          <div className="bg-[#1a1a24] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">Last created</p>
+            <p className="text-white text-2xl font-bold mt-1">{getLastCreated()}</p>
+            <p className="text-zinc-500 text-xs mt-1">Functional Group</p>
           </div>
         </div>
 
-        {activeTab === 'saved' && (
-          <div className="max-w-4xl mx-auto">
-            {savedVideos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-white/10 rounded-2xl bg-white/5">
-                <svg className="w-16 h-16 text-zinc-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                <p className="text-zinc-500 text-lg">No saved videos yet</p>
-                <p className="text-zinc-600 text-sm mt-1">Create your first video and it will appear here</p>
-                <button
-                  onClick={() => setActiveTab('create')}
-                  className="mt-6 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-medium transition-all"
-                >
-                  Create Video
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {savedVideos.map((video) => (
-                  <div key={video.id} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden hover:border-indigo-500/30 transition-all group">
-                    {video.renderedVideoUrl ? (
-                      <div className="relative aspect-video bg-black">
-                        <video src={video.renderedVideoUrl} className="w-full h-full object-cover" muted />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <a
-                            href={video.renderedVideoUrl}
-                            download
-                            className="bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-lg font-medium hover:bg-white/30 transition-colors"
-                          >
-                            Download
-                          </a>
-                        </div>
-                      </div>
+        <div className="bg-[#1a1a24] rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white text-lg font-semibold">My videos</h2>
+            <button
+              onClick={() => setActiveSidebar('create-new')}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New video
+            </button>
+          </div>
+
+          {savedVideos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <svg className="w-12 h-12 text-zinc-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <p className="text-zinc-500 text-sm">No videos yet</p>
+              <button
+                onClick={() => setActiveSidebar('create-new')}
+                className="mt-4 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+              >
+                Create your first video
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {savedVideos.map((video) => (
+                <div key={video.id} className="flex items-center gap-4 bg-[#12121a] rounded-lg p-3 hover:bg-[#1e1e2a] transition-colors group">
+                  <div className="w-16 h-10 bg-[#1a1a24] rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {video.backgroundImage ? (
+                      <img src={video.backgroundImage} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="relative aspect-video bg-black/50 flex items-center justify-center">
-                        <img src={video.backgroundImage} alt="" className="w-full h-full object-cover opacity-50" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-zinc-500 text-sm">No rendered video</span>
-                        </div>
-                      </div>
+                      <div className="w-3 h-3 rounded-full bg-indigo-500" />
                     )}
-                    <div className="p-4 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-white font-medium truncate">{video.title}</h3>
-                          <p className="text-zinc-500 text-xs mt-0.5">{formatDate(video.createdAt)}</p>
-                        </div>
-                        <button
-                          onClick={() => deleteSavedVideo(video.id)}
-                          className="text-zinc-600 hover:text-red-400 transition-colors p-1"
-                          title="Delete"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-zinc-500">
-                        <span className="bg-white/5 px-2 py-1 rounded">{video.infographics.length} infographics</span>
-                        <span className="bg-white/5 px-2 py-1 rounded">{Math.round(video.videoDurationInFrames / 30)}s duration</span>
-                      </div>
-                      <button
-                        onClick={() => loadSavedVideo(video)}
-                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Edit & Re-render
-                      </button>
-                    </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'create' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-7 space-y-6">
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl shadow-indigo-500/10">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Upload Document
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept=".txt,.pdf,.doc,.docx"
-                      onChange={handleFileChange}
-                      disabled={extracting}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                    <div className="flex items-center justify-center w-full h-24 border-2 border-dashed border-white/10 rounded-xl hover:border-indigo-500/50 transition-colors bg-white/5">
-                      <p className="text-zinc-400 text-sm">
-                        {document ? document.name : 'Drop PDF or TXT file here'}
-                      </p>
-                    </div>
-                  </div>
-                  {extracting && (
-                    <p className="text-sm text-indigo-400 mt-2 animate-pulse">Extracting text from PDF...</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Background Image
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleBackgroundImageChange}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    />
-                    <div className="flex items-center justify-center w-full h-24 border-2 border-dashed border-white/10 rounded-xl hover:border-indigo-500/50 transition-colors bg-white/5">
-                      <p className="text-zinc-400 text-sm">
-                        {backgroundFile ? backgroundFile.name : 'Upload background image'}
-                      </p>
-                    </div>
-                  </div>
-                  {backgroundImage && (
-                    <div className="mt-2 rounded-xl overflow-hidden border border-white/10">
-                      <img src={backgroundImage} alt="Background" className="w-full h-32 object-cover" />
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">
-                    Script
-                  </label>
-                  <textarea
-                    value={script}
-                    onChange={(e) => setScript(e.target.value.slice(0, 5000))}
-                    required
-                    rows={8}
-                    className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-zinc-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 resize-none transition-all"
-                    placeholder="Enter your script or upload a document..."
-                  />
-                  <div className="flex justify-between mt-2">
-                    <p className="text-xs text-zinc-500">
-                      {script.length}/5000 characters
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{video.title}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">
+                      {video.subject || 'Unknown'} · {video.chapter || 'Ch 1'} ·{' '}
+                      {video.renderedVideoUrl ? formatDuration(video.videoDurationInFrames) : `${Math.round(video.videoDurationInFrames / 30)}s`}
                     </p>
-                    <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-indigo-500 rounded-full transition-all"
-                        style={{ width: `${Math.min((script.length / 5000) * 100, 100)}%` }}
-                      />
-                    </div>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">
-                      Avatar
-                    </label>
-                    <select
-                      value={selectedAvatar}
-                      onChange={(e) => setSelectedAvatar(e.target.value)}
-                      required
-                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none cursor-pointer"
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                      video.status === 'published'
+                        ? 'bg-green-500/20 text-green-400'
+                        : 'bg-amber-500/20 text-amber-400'
+                    }`}
+                  >
+                    {video.status === 'published' ? 'Published' : 'Draft'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {video.renderedVideoUrl && (
+                      <a
+                        href={video.renderedVideoUrl}
+                        download
+                        className="text-zinc-400 hover:text-white text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:border-white/20 transition-colors"
+                      >
+                        Download
+                      </a>
+                    )}
+                    <button
+                      onClick={() => loadSavedVideo(video)}
+                      className="text-zinc-400 hover:text-white p-1 transition-colors"
+                      title="Edit"
                     >
-                      <option value="" className="bg-[#0A0A0F]">Select an avatar</option>
-                      {avatars.map((avatar, index) => (
-                        <option key={`${avatar.avatar_id}-${index}`} value={avatar.avatar_id} className="bg-[#0A0A0F]">
-                          {avatar.avatar_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">
-                      Voice
-                    </label>
-                    <select
-                      value={selectedVoice}
-                      onChange={(e) => setSelectedVoice(e.target.value)}
-                      required
-                      className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="" className="bg-[#0A0A0F]">Select a voice</option>
-                      {voices.map((voice, index) => (
-                        <option key={`${voice.voice_id}-${index}`} value={voice.voice_id} className="bg-[#0A0A0F]">
-                          {voice.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || !script || !selectedAvatar || !selectedVoice}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
-                      Generating... {generateProgress}%
-                    </span>
-                  ) : 'Generate Avatar Video'}
-                </button>
-              </form>
-
-              {error && (
-                <div className="mt-6 bg-red-500/10 border border-red-500/20 rounded-xl p-4 backdrop-blur-sm">
-                  <p className="text-red-400 text-sm">{error}</p>
+                    </button>
+                    <button
+                      onClick={() => deleteSavedVideo(video.id)}
+                      className="text-zinc-600 hover:text-red-400 p-1 transition-colors"
+                      title="Delete"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-              )}
+              ))}
+            </div>
+          )}
+        </div>
 
-              {status && status !== 'completed' && status !== 'failed' && (
-                <div className="mt-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 backdrop-blur-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                      <p className="text-indigo-400 text-sm capitalize">{status}</p>
+        <div className="bg-[#1a1a24] rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white text-lg font-semibold">Available avatars</h2>
+            <p className="text-zinc-500 text-sm">Managed by your admin</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {avatars.slice(0, 4).map((avatar) => (
+              <div
+                key={avatar.avatar_id}
+                className="flex items-center gap-3 bg-[#12121a] rounded-lg px-4 py-3 border border-white/5 hover:border-white/10 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                  {avatar.avatar_name.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-white text-sm font-medium">{avatar.avatar_name}</p>
+                  <p className="text-zinc-500 text-xs">Chemistry</p>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center gap-3 bg-[#12121a] rounded-lg px-4 py-3 border border-white/5 border-dashed">
+              <div className="w-8 h-8 rounded-full bg-[#1a1a24] flex items-center justify-center text-zinc-500 text-xs">
+                +
+              </div>
+              <p className="text-zinc-500 text-sm">More coming soon</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderDrafts() {
+    return (
+      <div className="space-y-6">
+        <div className="bg-[#1a1a24] rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white text-lg font-semibold">Drafts</h2>
+            <button
+              onClick={() => setActiveSidebar('create-new')}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New video
+            </button>
+          </div>
+
+          {draftVideos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <svg className="w-12 h-12 text-zinc-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p className="text-zinc-500 text-sm">No drafts</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {draftVideos.map((video) => (
+                <div key={video.id} className="flex items-center gap-4 bg-[#12121a] rounded-lg p-3 hover:bg-[#1e1e2a] transition-colors">
+                  <div className="w-16 h-10 bg-[#1a1a24] rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {video.backgroundImage ? (
+                      <img src={video.backgroundImage} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-3 h-3 rounded-full bg-amber-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{video.title}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">
+                      {video.subject || 'Unknown'} · {video.chapter || 'Ch 1'} · {Math.round(video.videoDurationInFrames / 30)}s
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">Draft</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => loadSavedVideo(video)}
+                      className="text-zinc-400 hover:text-white p-1 transition-colors"
+                      title="Edit"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => deleteSavedVideo(video.id)}
+                      className="text-zinc-600 hover:text-red-400 p-1 transition-colors"
+                      title="Delete"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderManageAvatars() {
+    return (
+      <div className="space-y-6">
+        <div className="bg-[#1a1a24] rounded-xl p-6">
+          <h2 className="text-white text-lg font-semibold mb-4">Manage avatars</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {avatars.map((avatar) => (
+              <div key={avatar.avatar_id} className="bg-[#12121a] rounded-lg p-4 border border-white/5 hover:border-white/10 transition-colors">
+                <div className="w-full aspect-square bg-[#1a1a24] rounded-lg mb-3 overflow-hidden flex items-center justify-center">
+                  {avatar.preview_image_url ? (
+                    <img src={avatar.preview_image_url} alt={avatar.avatar_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-white text-2xl font-bold">
+                      {avatar.avatar_name.charAt(0)}
                     </div>
-                    <p className="text-indigo-400 text-sm font-medium">{generateProgress}%</p>
-                  </div>
-                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500"
-                      style={{ width: `${generateProgress}%` }}
-                    />
-                  </div>
+                  )}
+                </div>
+                <p className="text-white text-sm font-medium">{avatar.avatar_name}</p>
+                <p className="text-zinc-500 text-xs mt-1">{avatar.premium ? 'Premium' : 'Free'}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCreateNew() {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[#1a1a24] rounded-xl p-6">
+          <h2 className="text-white text-lg font-semibold mb-6">Create new video</h2>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Upload Document</label>
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".txt,.pdf,.doc,.docx"
+                  onChange={handleFileChange}
+                  disabled={extracting}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                />
+                <div className="flex items-center justify-center w-full h-20 border-2 border-dashed border-white/10 rounded-lg hover:border-indigo-500/50 transition-colors bg-[#12121a]">
+                  <p className="text-zinc-400 text-sm">{document ? document.name : 'Drop PDF or TXT file here'}</p>
+                </div>
+              </div>
+              {extracting && <p className="text-sm text-indigo-400 mt-2 animate-pulse">Extracting text from PDF...</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Background Image</label>
+              <div className="relative">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBackgroundImageChange}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <div className="flex items-center justify-center w-full h-20 border-2 border-dashed border-white/10 rounded-lg hover:border-indigo-500/50 transition-colors bg-[#12121a]">
+                  <p className="text-zinc-400 text-sm">{backgroundFile ? backgroundFile.name : 'Upload background image'}</p>
+                </div>
+              </div>
+              {backgroundImage && (
+                <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
+                  <img src={backgroundImage} alt="Background" className="w-full h-24 object-cover" />
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="lg:col-span-5">
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl shadow-indigo-500/10 sticky top-8">
-              <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
-                <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Preview
-              </h2>
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Script</label>
+              <textarea
+                value={script}
+                onChange={(e) => setScript(e.target.value.slice(0, 5000))}
+                required
+                rows={6}
+                className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white placeholder-zinc-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 resize-none transition-all text-sm"
+                placeholder="Enter your script or upload a document..."
+              />
+              <div className="flex justify-between mt-1">
+                <p className="text-xs text-zinc-500">{script.length}/5000 characters</p>
+                <div className="w-20 h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all"
+                    style={{ width: `${Math.min((script.length / 5000) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
 
-              {renderedVideoUrl ? (
-                <div className="space-y-4">
-                  <div className="rounded-xl overflow-hidden border border-green-500/30 shadow-lg">
-                    <video src={renderedVideoUrl} controls className="w-full" />
-                  </div>
-                  <a
-                    href={renderedVideoUrl}
-                    download
-                    className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-3 px-6 rounded-xl font-medium transition-all"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download Final Video
-                  </a>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Avatar</label>
+                <select
+                  value={selectedAvatar}
+                  onChange={(e) => setSelectedAvatar(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none cursor-pointer text-sm"
+                >
+                  <option value="" className="bg-[#1a1a24]">Select an avatar</option>
+                  {avatars.map((avatar, index) => (
+                    <option key={`${avatar.avatar_id}-${index}`} value={avatar.avatar_id} className="bg-[#1a1a24]">
+                      {avatar.avatar_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Voice</label>
+                <select
+                  value={selectedVoice}
+                  onChange={(e) => setSelectedVoice(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none cursor-pointer text-sm"
+                >
+                  <option value="" className="bg-[#1a1a24]">Select a voice</option>
+                  {voices.map((voice, index) => (
+                    <option key={`${voice.voice_id}-${index}`} value={voice.voice_id} className="bg-[#1a1a24]">
+                      {voice.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !script || !selectedAvatar || !selectedVoice}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 px-6 rounded-lg font-semibold text-sm shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Generating... {generateProgress}%
+                </span>
+              ) : 'Generate Avatar Video'}
+            </button>
+          </form>
+
+          {error && (
+            <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
+          {status && status !== 'completed' && status !== 'failed' && (
+            <div className="mt-4 bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                  <p className="text-indigo-400 text-sm capitalize">{status}</p>
+                </div>
+                <p className="text-indigo-400 text-sm font-medium">{generateProgress}%</p>
+              </div>
+              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                  style={{ width: `${generateProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-[#1a1a24] rounded-xl p-6">
+          <h3 className="text-white text-lg font-semibold mb-4">Preview</h3>
+
+          {renderedVideoUrl ? (
+            <div className="space-y-4">
+              <div className="rounded-lg overflow-hidden border border-green-500/30">
+                <video src={renderedVideoUrl} controls className="w-full" />
+              </div>
+              <div className="flex gap-3">
+                <a
+                  href={renderedVideoUrl}
+                  download
+                  className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-2.5 px-4 rounded-lg font-medium text-sm transition-all"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Final Video
+                </a>
+                <button
+                  onClick={handleReRender}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 px-4 rounded-lg font-medium text-sm transition-all border border-white/10"
+                >
+                  Edit & Re-render
+                </button>
+              </div>
+            </div>
+          ) : videoUrl && backgroundImage ? (
+            <div className="space-y-4">
+              <div className="text-xs text-indigo-400 mb-1">Preview - Avatar + Background + Script</div>
+              <div className="rounded-lg overflow-hidden border border-white/10">
+                <Player
+                  key={videoUrl}
+                  ref={playerRef}
+                  component={RemotionVideo}
+                  durationInFrames={videoDurationInFrames}
+                  fps={30}
+                  compositionWidth={1920}
+                  compositionHeight={1080}
+                  style={{ width: '100%', height: 'auto' }}
+                  inputProps={{
+                    avatarVideoUrl: videoUrl,
+                    backgroundImageUrl: backgroundImage,
+                    script: script,
+                    durationInFrames: videoDurationInFrames,
+                    infographics: infographics,
+                  }}
+                  controls
+                />
+              </div>
+
+              <div className="border-t border-white/10 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-zinc-300">Place Infographics</h4>
                   <button
-                    onClick={handleReRender}
-                    className="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-xl font-medium transition-all border border-white/10"
+                    type="button"
+                    onClick={() => setShowInfographicPanel(!showInfographicPanel)}
+                    className="text-xs bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg transition-colors"
                   >
-                    Edit & Re-render
+                    {showInfographicPanel ? 'Hide Panel' : 'Show Panel'}
                   </button>
                 </div>
-              ) : videoUrl && backgroundImage ? (
-                <div className="space-y-4">
-                  <div className="text-xs text-indigo-400 mb-1">Preview - Avatar + Background + Script</div>
-                  <div className="rounded-xl overflow-hidden border border-white/10 shadow-lg">
-                    <Player
-                      key={videoUrl}
-                      ref={playerRef}
-                      component={RemotionVideo}
-                      durationInFrames={videoDurationInFrames}
-                      fps={30}
-                      compositionWidth={1920}
-                      compositionHeight={1080}
-                      style={{ width: '100%', height: 'auto' }}
-                      inputProps={{
-                        avatarVideoUrl: videoUrl,
-                        backgroundImageUrl: backgroundImage,
-                        script: script,
-                        durationInFrames: videoDurationInFrames,
-                        infographics: infographics,
-                      }}
-                      controls
-                    />
-                  </div>
 
-                  {videoUrl && (
-                    <div className="space-y-3 border-t border-white/10 pt-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-zinc-300">Place Infographics</h3>
+                {showInfographicPanel && (
+                  <div className="space-y-4 bg-[#12121a] rounded-lg p-4 border border-white/10">
+                    <div className="relative rounded-lg overflow-hidden border border-white/10">
+                      <video
+                        ref={playbackVideoRef}
+                        src={videoUrl}
+                        className="w-full"
+                        onEnded={() => setIsPlaying(false)}
+                      />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-3 py-2 flex items-center gap-3">
                         <button
                           type="button"
-                          onClick={() => setShowInfographicPanel(!showInfographicPanel)}
-                          className="text-xs bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded-lg transition-colors"
+                          onClick={handlePlayAvatarVideo}
+                          className="text-white hover:text-indigo-400 transition-colors"
                         >
-                          {showInfographicPanel ? 'Hide Panel' : 'Show Panel'}
+                          {isPlaying ? (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          )}
+                        </button>
+                        <span className="text-xs text-zinc-300 font-mono">
+                          {formatTime(currentFrame)} / {formatTime(videoDurationInFrames)}
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={videoDurationInFrames}
+                          value={currentFrame}
+                          onChange={(e) => handleSeekVideo(Number(e.target.value))}
+                          className="flex-1 h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-400 mb-2">Upload Infographic Image</label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleInfographicImageChange}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="flex items-center justify-center w-full h-14 border-2 border-dashed border-white/10 rounded-lg hover:border-indigo-500/50 transition-colors bg-[#1a1a24]">
+                          <p className="text-zinc-500 text-xs">{newInfographicFile ? newInfographicFile.name : 'Upload infographic image'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {previewInfographic && (
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-zinc-400">Drag to place on frame</label>
+                        <div
+                          ref={frameContainerRef}
+                          className="relative w-full rounded-lg overflow-hidden border border-indigo-500/30 bg-black/50 cursor-crosshair"
+                          style={{ aspectRatio: '16/9' }}
+                        >
+                          <video src={videoUrl} className="w-full h-full object-cover" muted />
+                          <div
+                            className="absolute top-0 bottom-0 border-l-2 border-dashed border-yellow-400/60 pointer-events-none"
+                            style={{ left: '30%' }}
+                          >
+                            <span className="absolute -top-4 left-1 text-[10px] text-yellow-400 font-mono whitespace-nowrap">
+                              Script area →
+                            </span>
+                          </div>
+                          <div
+                            className="absolute border-2 border-indigo-400 bg-indigo-400/10 cursor-move hover:border-indigo-300 transition-colors"
+                            style={{
+                              left: `${previewInfographic.x}%`,
+                              top: `${previewInfographic.y}%`,
+                              width: `${previewInfographic.width}%`,
+                              height: `${previewInfographic.height}%`,
+                            }}
+                            onMouseDown={(e) => handleStartDrag(e, previewInfographic)}
+                          >
+                            <img
+                              src={previewInfographic.imageUrl}
+                              alt="Preview"
+                              className="w-full h-full object-contain pointer-events-none"
+                            />
+                            <div className="absolute -top-4 left-0 text-xs text-indigo-400 font-mono whitespace-nowrap">
+                              {formatTime(newInfographicStartFrame)} - {formatTime(newInfographicEndFrame)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {previewInfographic && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-zinc-400 mb-1">Start Time</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={videoDurationInFrames}
+                              value={newInfographicStartFrame}
+                              onChange={(e) => setNewInfographicStartFrame(Number(e.target.value))}
+                              className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#1a1a24] text-white text-sm focus:ring-2 focus:ring-indigo-500/50"
+                            />
+                            <span className="text-xs text-zinc-500">{formatTime(newInfographicStartFrame)}</span>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-zinc-400 mb-1">End Time</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={videoDurationInFrames}
+                              value={newInfographicEndFrame}
+                              onChange={(e) => setNewInfographicEndFrame(Number(e.target.value))}
+                              className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#1a1a24] text-white text-sm focus:ring-2 focus:ring-indigo-500/50"
+                            />
+                            <span className="text-xs text-zinc-500">{formatTime(newInfographicEndFrame)}</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-zinc-400 mb-1">Width (%)</label>
+                            <input
+                              type="range"
+                              min={5}
+                              max={80}
+                              value={previewInfographic.width}
+                              onChange={(e) =>
+                                setPreviewInfographic({ ...previewInfographic, width: Number(e.target.value) })
+                              }
+                              className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
+                            />
+                            <span className="text-xs text-zinc-500">{previewInfographic.width}%</span>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-zinc-400 mb-1">Height (%)</label>
+                            <input
+                              type="range"
+                              min={5}
+                              max={80}
+                              value={previewInfographic.height}
+                              onChange={(e) =>
+                                setPreviewInfographic({ ...previewInfographic, height: Number(e.target.value) })
+                              }
+                              className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
+                            />
+                            <span className="text-xs text-zinc-500">{previewInfographic.height}%</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleAddInfographic}
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-4 rounded-lg font-medium text-sm shadow-lg shadow-indigo-500/25 transition-all"
+                        >
+                          Add Infographic
                         </button>
                       </div>
-
-                      {showInfographicPanel && (
-                        <div className="space-y-4 bg-white/5 rounded-xl p-4 border border-white/10">
-                          <div className="relative rounded-lg overflow-hidden border border-white/10">
-                            <video
-                              ref={playbackVideoRef}
-                              src={videoUrl}
-                              className="w-full"
-                              onEnded={() => setIsPlaying(false)}
-                            />
-                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-3 py-2 flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={handlePlayAvatarVideo}
-                                className="text-white hover:text-indigo-400 transition-colors"
-                              >
-                                {isPlaying ? (
-                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M8 5v14l11-7z" />
-                                  </svg>
-                                )}
-                              </button>
-                              <span className="text-xs text-zinc-300 font-mono">
-                                {formatTime(currentFrame)} / {formatTime(videoDurationInFrames)}
-                              </span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={videoDurationInFrames}
-                                value={currentFrame}
-                                onChange={(e) => handleSeekVideo(Number(e.target.value))}
-                                className="flex-1 h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-zinc-400 mb-2">
-                              Upload Infographic Image
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleInfographicImageChange}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              />
-                              <div className="flex items-center justify-center w-full h-16 border-2 border-dashed border-white/10 rounded-lg hover:border-indigo-500/50 transition-colors bg-white/5">
-                                <p className="text-zinc-500 text-xs">
-                                  {newInfographicFile ? newInfographicFile.name : 'Upload infographic image'}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {previewInfographic && (
-                            <div className="space-y-2">
-                              <label className="block text-xs font-medium text-zinc-400">
-                                Drag to place on frame
-                              </label>
-                              <div
-                                ref={frameContainerRef}
-                                className="relative w-full rounded-lg overflow-hidden border border-indigo-500/30 bg-black/50 cursor-crosshair"
-                                style={{ aspectRatio: '16/9' }}
-                              >
-                                <video
-                                  src={videoUrl}
-                                  className="w-full h-full object-cover"
-                                  muted
-                                />
-                                <div
-                                  className="absolute top-0 bottom-0 border-l-2 border-dashed border-yellow-400/60 pointer-events-none"
-                                  style={{ left: '30%' }}
-                                >
-                                  <span className="absolute -top-5 left-1 text-[10px] text-yellow-400 font-mono whitespace-nowrap">
-                                    Script area starts here →
-                                  </span>
-                                </div>
-                                <div
-                                  className="absolute border-2 border-indigo-400 bg-indigo-400/10 cursor-move hover:border-indigo-300 transition-colors"
-                                  style={{
-                                    left: `${previewInfographic.x}%`,
-                                    top: `${previewInfographic.y}%`,
-                                    width: `${previewInfographic.width}%`,
-                                    height: `${previewInfographic.height}%`,
-                                  }}
-                                  onMouseDown={(e) => handleStartDrag(e, previewInfographic)}
-                                >
-                                  <img
-                                    src={previewInfographic.imageUrl}
-                                    alt="Preview"
-                                    className="w-full h-full object-contain pointer-events-none"
-                                  />
-                                  <div className="absolute -top-5 left-0 text-xs text-indigo-400 font-mono whitespace-nowrap">
-                                    {formatTime(newInfographicStartFrame)} - {formatTime(newInfographicEndFrame)}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {previewInfographic && (
-                            <div className="space-y-3">
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                                    Start Time
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={videoDurationInFrames}
-                                    value={newInfographicStartFrame}
-                                    onChange={(e) => setNewInfographicStartFrame(Number(e.target.value))}
-                                    className="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:ring-2 focus:ring-indigo-500/50"
-                                  />
-                                  <span className="text-xs text-zinc-500">{formatTime(newInfographicStartFrame)}</span>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                                    End Time
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={videoDurationInFrames}
-                                    value={newInfographicEndFrame}
-                                    onChange={(e) => setNewInfographicEndFrame(Number(e.target.value))}
-                                    className="w-full px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white text-sm focus:ring-2 focus:ring-indigo-500/50"
-                                  />
-                                  <span className="text-xs text-zinc-500">{formatTime(newInfographicEndFrame)}</span>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                                    Width (%)
-                                  </label>
-                                  <input
-                                    type="range"
-                                    min={5}
-                                    max={80}
-                                    value={previewInfographic.width}
-                                    onChange={(e) =>
-                                      setPreviewInfographic({ ...previewInfographic, width: Number(e.target.value) })
-                                    }
-                                    className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
-                                  />
-                                  <span className="text-xs text-zinc-500">{previewInfographic.width}%</span>
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-zinc-400 mb-1">
-                                    Height (%)
-                                  </label>
-                                  <input
-                                    type="range"
-                                    min={5}
-                                    max={80}
-                                    value={previewInfographic.height}
-                                    onChange={(e) =>
-                                      setPreviewInfographic({ ...previewInfographic, height: Number(e.target.value) })
-                                    }
-                                    className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer"
-                                  />
-                                  <span className="text-xs text-zinc-500">{previewInfographic.height}%</span>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={handleAddInfographic}
-                                className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white py-2.5 px-4 rounded-lg font-medium text-sm shadow-lg shadow-indigo-500/25 transition-all"
-                              >
-                                Add Infographic
-                              </button>
-                            </div>
-                          )}
-
-                          {infographics.length > 0 && (
-                            <div className="space-y-2 border-t border-white/10 pt-3">
-                              <h4 className="text-xs font-medium text-zinc-400">Added Infographics ({infographics.length})</h4>
-                              <div className="space-y-2 max-h-48 overflow-y-auto">
-                                {infographics.map((info, index) => (
-                                  <div key={info.id} className="bg-white/5 rounded-lg p-3 border border-white/10 space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <img src={info.imageUrl} alt={`Infographic ${index + 1}`} className="w-14 h-10 object-contain bg-black/50 rounded" />
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-xs text-zinc-300 font-medium">#{index + 1}</p>
-                                        <p className="text-xs text-zinc-500">
-                                          {formatTime(info.startFrame)} - {formatTime(info.endFrame)}
-                                        </p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveInfographic(info.id)}
-                                        className="text-red-400 hover:text-red-300 transition-colors p-1"
-                                        title="Delete"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                      </button>
-                                    </div>
-
-                                    {editingInfographicId === info.id ? (
-                                      <div className="space-y-2 pt-2 border-t border-white/10">
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <div>
-                                            <label className="block text-xs text-zinc-500 mb-1">Start</label>
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={videoDurationInFrames}
-                                              value={editStartFrame}
-                                              onChange={(e) => setEditStartFrame(Number(e.target.value))}
-                                              className="w-full px-2 py-1 rounded border border-white/10 bg-white/5 text-white text-xs"
-                                            />
-                                          </div>
-                                          <div>
-                                            <label className="block text-xs text-zinc-500 mb-1">End</label>
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={videoDurationInFrames}
-                                              value={editEndFrame}
-                                              onChange={(e) => setEditEndFrame(Number(e.target.value))}
-                                              className="w-full px-2 py-1 rounded border border-white/10 bg-white/5 text-white text-xs"
-                                            />
-                                          </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                          <button
-                                            type="button"
-                                            onClick={handleSaveEditInfographic}
-                                            className="flex-1 bg-green-600 hover:bg-green-500 text-white py-1 rounded text-xs transition-colors"
-                                          >
-                                            Save
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setEditingInfographicId(null)}
-                                            className="flex-1 bg-white/10 hover:bg-white/20 text-white py-1 rounded text-xs transition-colors"
-                                          >
-                                            Cancel
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleStartEditInfographic(info.id)}
-                                        className="w-full text-xs text-indigo-400 hover:text-indigo-300 transition-colors py-1"
-                                      >
-                                        Edit timing
-                                      </button>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleRenderVideo}
-                    disabled={rendering}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white py-4 px-6 rounded-xl font-semibold shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {rendering ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        Rendering... {renderProgress}%
-                      </span>
-                    ) : (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        Render Final Video (MP4)
-                      </span>
                     )}
-                  </button>
-                  {rendering && (
-                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-300"
-                        style={{ width: `${renderProgress}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : backgroundImage && script ? (
-                <div className="space-y-4">
-                  <div className="text-xs text-zinc-500 mb-2">Live Preview (generate avatar first)</div>
-                  <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-lg" style={{ aspectRatio: '16/9' }}>
-                    <img src={backgroundImage} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute left-[30%] top-0 w-[70%] h-full bg-black/60" />
-                    <div className="absolute left-0 top-0 w-[30%] h-full flex items-center justify-center">
-                      <div className="text-zinc-500 text-xs text-center px-2">Avatar will appear here</div>
-                    </div>
-                    <div className="absolute left-[30%] top-0 w-[70%] h-full p-6 overflow-hidden">
-                      <div className="text-white text-sm leading-relaxed line-clamp-6">
-                        {script}
+
+                    {infographics.length > 0 && (
+                      <div className="space-y-2 border-t border-white/10 pt-3">
+                        <h4 className="text-xs font-medium text-zinc-400">Added Infographics ({infographics.length})</h4>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {infographics.map((info, index) => (
+                            <div key={info.id} className="bg-[#1a1a24] rounded-lg p-2 border border-white/10 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <img src={info.imageUrl} alt={`Infographic ${index + 1}`} className="w-12 h-8 object-contain bg-black/50 rounded" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-zinc-300 font-medium">#{index + 1}</p>
+                                  <p className="text-xs text-zinc-500">{formatTime(info.startFrame)} - {formatTime(info.endFrame)}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveInfographic(info.id)}
+                                  className="text-red-400 hover:text-red-300 transition-colors p-1"
+                                  title="Delete"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+
+                              {editingInfographicId === info.id ? (
+                                <div className="space-y-2 pt-2 border-t border-white/10">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-xs text-zinc-500 mb-1">Start</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={videoDurationInFrames}
+                                        value={editStartFrame}
+                                        onChange={(e) => setEditStartFrame(Number(e.target.value))}
+                                        className="w-full px-2 py-1 rounded border border-white/10 bg-[#1a1a24] text-white text-xs"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs text-zinc-500 mb-1">End</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={videoDurationInFrames}
+                                        value={editEndFrame}
+                                        onChange={(e) => setEditEndFrame(Number(e.target.value))}
+                                        className="w-full px-2 py-1 rounded border border-white/10 bg-[#1a1a24] text-white text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleSaveEditInfographic}
+                                      className="flex-1 bg-green-600 hover:bg-green-500 text-white py-1 rounded text-xs transition-colors"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingInfographicId(null)}
+                                      className="flex-1 bg-white/10 hover:bg-white/20 text-white py-1 rounded text-xs transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditInfographic(info.id)}
+                                  className="w-full text-xs text-indigo-400 hover:text-indigo-300 transition-colors py-1"
+                                >
+                                  Edit timing
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={loading || !script || !selectedAvatar || !selectedVoice}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white py-3 px-6 rounded-xl font-medium shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {loading ? 'Generating Avatar...' : 'Generate Avatar Video'}
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-80 border-2 border-dashed border-white/10 rounded-xl bg-white/5">
-                  <svg className="w-16 h-16 text-zinc-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-zinc-500 text-sm text-center px-4">
-                    {loading ? 'Generating avatar video...' : !backgroundImage ? 'Upload a background image to preview' : 'Your video will appear here'}
-                  </p>
-                  {loading && (
-                    <div className="mt-4 w-32 h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full animate-pulse" style={{ width: '60%' }} />
-                    </div>
-                  )}
+                )}
+              </div>
+
+              <button
+                onClick={handleRenderVideo}
+                disabled={rendering}
+                className="w-full bg-green-600 hover:bg-green-500 text-white py-3 px-6 rounded-lg font-semibold shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+              >
+                {rendering ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Rendering... {renderProgress}%
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Render Final Video (MP4)
+                  </span>
+                )}
+              </button>
+              {rendering && (
+                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-green-500 rounded-full transition-all duration-300"
+                    style={{ width: `${renderProgress}%` }}
+                  />
                 </div>
               )}
             </div>
-          </div>
+          ) : backgroundImage && script ? (
+            <div className="space-y-4">
+              <div className="text-xs text-zinc-500 mb-2">Live Preview (generate avatar first)</div>
+              <div className="relative rounded-lg overflow-hidden border border-white/10" style={{ aspectRatio: '16/9' }}>
+                <img src={backgroundImage} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute left-[30%] top-0 w-[70%] h-full bg-black/60" />
+                <div className="absolute left-0 top-0 w-[30%] h-full flex items-center justify-center">
+                  <div className="text-zinc-500 text-xs text-center px-2">Avatar will appear here</div>
+                </div>
+                <div className="absolute left-[30%] top-0 w-[70%] h-full p-4 overflow-hidden">
+                  <div className="text-white text-xs leading-relaxed line-clamp-4">
+                    {script}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={loading || !script || !selectedAvatar || !selectedVoice}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 px-6 rounded-lg font-medium shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+              >
+                {loading ? 'Generating Avatar...' : 'Generate Avatar Video'}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-white/10 rounded-lg bg-[#12121a]">
+              <svg className="w-12 h-12 text-zinc-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <p className="text-zinc-500 text-sm text-center px-4">
+                {loading ? 'Generating avatar video...' : !backgroundImage ? 'Upload a background image to preview' : 'Your video will appear here'}
+              </p>
+              {loading && (
+                <div className="mt-3 w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-indigo-500 rounded-full animate-pulse" style={{ width: '60%' }} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        )}
 
-        {videoUrl && backgroundImage && activeTab === 'create' && (
-          <div className="max-w-4xl mx-auto mt-8">
+        {videoUrl && backgroundImage && (
+          <div className="lg:col-span-2">
             <button
               onClick={saveCurrentVideo}
               disabled={!renderedVideoUrl && !videoUrl}
-              className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white py-3 px-6 rounded-xl font-semibold shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              className="w-full bg-amber-600 hover:bg-amber-500 text-white py-3 px-6 rounded-lg font-semibold shadow-lg shadow-amber-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
               </svg>
               Save Video to My Videos
@@ -1333,6 +1477,120 @@ export default function Home() {
           </div>
         )}
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0f0f14] text-white flex">
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-[#14141c] border-r border-white/5 flex flex-col transition-transform duration-200 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:overflow-hidden'
+        }`}
+      >
+        <div className="p-4 border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-white text-sm font-semibold">EduCast</h1>
+              <p className="text-zinc-500 text-xs">AI Video Platform</p>
+            </div>
+          </div>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-3 space-y-6">
+          {Object.entries(groupedSidebar).map(([section, items]) => (
+            <div key={section}>
+              <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider px-3 mb-2">{section}</p>
+              <div className="space-y-0.5">
+                {items.map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => {
+                      if (!item.locked) {
+                        setActiveSidebar(item.key);
+                        if (window.innerWidth < 1024) setSidebarOpen(false);
+                      }
+                    }}
+                    disabled={item.locked}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                      activeSidebar === item.key
+                        ? 'bg-white/10 text-white'
+                        : item.locked
+                        ? 'text-zinc-600 cursor-not-allowed'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {item.label}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <span className="bg-amber-500/20 text-amber-400 text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                          {item.badge}
+                        </span>
+                      )}
+                      {item.locked && (
+                        <svg className="w-3.5 h-3.5 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="p-3 border-t border-white/5">
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors text-sm lg:hidden"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+            Close
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col min-h-screen">
+        <header className="sticky top-0 z-30 bg-[#0f0f14]/80 backdrop-blur-xl border-b border-white/5">
+          <div className="flex items-center justify-between px-4 lg:px-6 py-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="lg:hidden p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h2 className="text-white font-semibold capitalize">
+                {activeSidebar === 'my-videos' ? 'My videos' : activeSidebar === 'create-new' ? 'Create new video' : activeSidebar === 'drafts' ? 'Drafts' : activeSidebar === 'manage-avatars' ? 'Manage avatars' : activeSidebar.replace(/-/g, ' ')}
+              </h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                U
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 p-4 lg:p-6 overflow-y-auto">
+          {renderMainContent()}
+        </div>
+      </main>
     </div>
   );
 }
