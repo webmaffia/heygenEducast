@@ -75,6 +75,7 @@ export const ScriptDisplay: React.FC<{
         paddingRight: 40,
         boxSizing: 'border-box',
         overflow: 'hidden',
+        zIndex: 5,
       }}
     >
       <div

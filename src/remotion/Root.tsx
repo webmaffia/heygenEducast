@@ -1,5 +1,6 @@
 import { Composition } from 'remotion';
 import { RemotionVideo } from './VideoComposition';
+import { Infographic } from './InfographicsOverlay';
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -16,6 +17,7 @@ export const RemotionRoot: React.FC = () => {
           backgroundImageUrl: '',
           script: '',
           durationInFrames: 3600,
+          infographics: [] as Infographic[],
         }}
       />
     </>

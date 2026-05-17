@@ -3,6 +3,7 @@ import { bundle } from '@remotion/bundler';
 import { renderMedia, getCompositions } from '@remotion/renderer';
 import path from 'path';
 import fs from 'fs';
+import { Infographic } from '@/remotion/InfographicsOverlay';
 
 const VIDEOS_DIR = path.join(process.cwd(), 'public', 'generated-videos');
 
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
   (async () => {
     try {
       const body = await request.json();
-      const { avatarVideoUrl, backgroundImageUrl, script, durationInFrames } = body;
+      const { avatarVideoUrl, backgroundImageUrl, script, durationInFrames, infographics } = body;
 
       if (!avatarVideoUrl || !backgroundImageUrl || !script) {
         await sendProgress(0, 'Error: Missing required parameters');
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest) {
       }
 
       const frames = durationInFrames || 900;
+      const infographicsData: Infographic[] = infographics || [];
+
       const videoId = `video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const outputLocation = path.join(VIDEOS_DIR, `${videoId}.mp4`);
 
@@ -47,6 +50,7 @@ export async function POST(request: NextRequest) {
           backgroundImageUrl,
           script,
           durationInFrames: frames,
+          infographics: infographicsData,
         },
       });
 
@@ -58,6 +62,7 @@ export async function POST(request: NextRequest) {
       }
 
       await sendProgress(20, `Rendering video: ${frames} frames (${(frames / 30).toFixed(1)}s)...`);
+      
       await renderMedia({
         composition: {
           ...composition,
