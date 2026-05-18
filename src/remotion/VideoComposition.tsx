@@ -8,7 +8,10 @@ export const RemotionVideo: React.FC<{
   script: string;
   durationInFrames: number;
   infographics?: Infographic[];
-}> = ({ avatarVideoUrl, backgroundImageUrl, script, durationInFrames, infographics = [] }) => {
+  scriptFontSize?: number;
+  scriptTop?: number;
+  scriptLeft?: number;
+}> = ({ avatarVideoUrl, backgroundImageUrl, script, durationInFrames, infographics = [], scriptFontSize = 28, scriptTop = 50, scriptLeft = 40 }) => {
   const { width, height } = useVideoConfig();
   
   const avatarWidth = width * 0.3;
@@ -71,6 +74,7 @@ export const RemotionVideo: React.FC<{
           avatarWidth={avatarWidth}
           scriptAreaWidth={scriptAreaWidth}
           height={height}
+          fontSize={scriptFontSize}
         />
       </Sequence>
 

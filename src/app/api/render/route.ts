@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   (async () => {
     try {
       const body = await request.json();
-      const { avatarVideoUrl, backgroundImageUrl, script, durationInFrames, infographics } = body;
+      const { avatarVideoUrl, backgroundImageUrl, script, durationInFrames, infographics, scriptFontSize = 28 } = body;
 
       if (!avatarVideoUrl || !backgroundImageUrl || !script) {
         await sendProgress(0, 'Error: Missing required parameters');
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
 
       const frames = durationInFrames || 900;
       const infographicsData: Infographic[] = infographics || [];
+      const fontSize = scriptFontSize || 28;
 
       const videoId = `video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const outputLocation = path.join(VIDEOS_DIR, `${videoId}.mp4`);
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
           script,
           durationInFrames: frames,
           infographics: infographicsData,
+          scriptFontSize: fontSize,
         },
       });
 
