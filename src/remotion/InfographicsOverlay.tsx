@@ -1,4 +1,4 @@
-import { useCurrentFrame, useVideoConfig, Img } from 'remotion';
+import { useCurrentFrame } from 'remotion';
 
 export interface Infographic {
   id: string;
@@ -15,18 +15,18 @@ export const InfographicsOverlay: React.FC<{
   infographics: Infographic[];
 }> = ({ infographics }) => {
   const frame = useCurrentFrame();
-  const { width, height } = useVideoConfig();
 
   const activeInfographics = infographics.filter(
-    (info) => frame >= info.startFrame && frame <= info.endFrame
+    (info) => frame >= info.startFrame && frame <= info.endFrame,
   );
 
   return (
     <>
       {activeInfographics.map((info) => (
-        <Img
+        <img
           key={info.id}
           src={info.imageUrl}
+          alt=""
           style={{
             position: 'absolute',
             left: info.x,

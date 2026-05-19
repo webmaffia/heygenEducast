@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
 import { RemotionVideo } from '@/remotion/VideoComposition';
 import { Infographic } from '@/remotion/InfographicsOverlay';
+import { isAvatarTooLargeForPreview } from '@/lib/avatar-video';
 
 async function extractPdfText(file: File): Promise<string> {
   const pdfjsLib = await import('pdfjs-dist');
@@ -68,10 +69,13 @@ export default function Home() {
   const [scriptFontSize, setScriptFontSize] = useState(28);
   const [scriptTop, setScriptTop] = useState(0);
   const [scriptLeft, setScriptLeft] = useState(40);
+  const [videoTransparency, setVideoTransparency] = useState(65);
+  const [avatarPosition, setAvatarPosition] = useState<'left' | 'right'>('left');
+  const [avatarSize, setAvatarSize] = useState(40);
+  const [avatarFileSizeMb, setAvatarFileSizeMb] = useState<number | undefined>();
   const [scriptKey, setScriptKey] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const playbackVideoRef = useRef<HTMLVideoElement | null>(null);
-  const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const durationProbeRef = useRef<HTMLVideoElement | null>(null);
   const frameContainerRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<DragInfo | null>(null);
   const [previewInfographic, setPreviewInfographic] = useState<{ imageUrl: string; x: number; y: number; width: number; height: number; } | null>(null);
@@ -138,7 +142,14 @@ export default function Home() {
     fetchData();
   }, []);
 
-  useEffect(() => { return () => { if (playbackIntervalRef.current) clearInterval(playbackIntervalRef.current); }; }, []);
+  useEffect(() => {
+    return () => {
+      if (durationProbeRef.current) {
+        durationProbeRef.current.removeAttribute('src');
+        durationProbeRef.current.load();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!dragging || !frameContainerRef.current || !previewInfographic) return;
@@ -165,6 +176,47 @@ export default function Home() {
   function formatTime(frames: number) { const seconds = Math.floor(frames / 30); const mins = Math.floor(seconds / 60); const secs = seconds % 60; return `${mins}:${secs.toString().padStart(2, '0')}`; }
   function formatTotalDuration(frames: number) { const totalSeconds = Math.floor(frames / 30); const hours = Math.floor(totalSeconds / 3600); const mins = Math.floor((totalSeconds % 3600) / 60); if (hours > 0) return `${hours}.${Math.round((mins / 60) * 10)}h`; return `${mins}m`; }
 
+  async function applyVideoDuration(url: string, sizeMb?: number) {
+    if (url.startsWith('/avatar-videos/') || url.startsWith('http')) {
+      try {
+        const res = await fetch(`/api/video/metadata?url=${encodeURIComponent(url)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const frames = data.durationInFrames ?? 900;
+          setVideoDurationInFrames(frames);
+          setNewInfographicEndFrame(frames);
+          setAvatarFileSizeMb(data.sizeMb);
+          return frames;
+        }
+      } catch { /* fall through to browser probe */ }
+    }
+    if (url.startsWith('/avatar-videos/') && isAvatarTooLargeForPreview(sizeMb)) {
+      setVideoDurationInFrames(900);
+      setNewInfographicEndFrame(900);
+      return 900;
+    }
+    const video = durationProbeRef.current ?? globalThis.document.createElement('video');
+    durationProbeRef.current = video;
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const duration = Math.ceil(video.duration * 30);
+      setVideoDurationInFrames(duration);
+      setNewInfographicEndFrame(duration);
+    };
+    video.onerror = () => {
+      setVideoDurationInFrames(900);
+      setNewInfographicEndFrame(900);
+    };
+    video.src = url;
+    video.load();
+    return undefined;
+  }
+
+  useEffect(() => {
+    if (!videoUrl) return;
+    void applyVideoDuration(videoUrl);
+  }, [videoUrl]);
+
   const checkStatus = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/video?action=status&videoId=${id}`);
@@ -174,13 +226,15 @@ export default function Home() {
       setGenerateProgress(statusProgress[data.data.status] || 50);
       if (data.data.status === 'completed') {
         setGenerateProgress(100);
-        const url = data.data.video_url_webm || data.data.video_url || null;
-        setVideoUrl(url);
+        const webmUrl = data.data.video_url_webm || null;
+        const mp4Url = data.data.video_url || null;
+        const url = webmUrl || mp4Url;
         if (url) {
-          const video = globalThis.document.createElement('video');
-          video.preload = 'metadata'; video.src = url;
-          video.onloadedmetadata = () => { const duration = Math.ceil(video.duration * 30); setVideoDurationInFrames(duration); setNewInfographicEndFrame(duration); };
-          video.onerror = () => { setVideoDurationInFrames(900); setNewInfographicEndFrame(900); };
+          setVideoUrl(url);
+          setAvatarFileSizeMb(undefined);
+          await applyVideoDuration(url);
+        } else {
+          setVideoUrl(null);
         }
         setLoading(false);
       } else if (data.data.status === 'failed') {
@@ -206,8 +260,12 @@ export default function Home() {
     if (!videoUrl || !backgroundImage || !script) return;
     setRendering(true); setRenderProgress(0); setError(null);
     try {
+      let durationForRender = videoDurationInFrames;
+      const probed = await applyVideoDuration(videoUrl);
+      if (probed) durationForRender = probed;
+
       const response = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarVideoUrl: videoUrl, backgroundImageUrl: backgroundImage, script, durationInFrames: videoDurationInFrames, infographics, scriptFontSize }),
+        body: JSON.stringify({ avatarVideoUrl: videoUrl, backgroundImageUrl: backgroundImage, script, durationInFrames: durationForRender, infographics, scriptFontSize, videoTransparency, videoId }),
       });
       if (!response.ok) throw new Error(`Render failed: ${response.status}`);
       const reader = response.body?.getReader(); if (!reader) throw new Error('No response body');
@@ -218,7 +276,17 @@ export default function Home() {
         const lines = buffer.split('\n'); buffer = lines.pop() || '';
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            try { const data = JSON.parse(line.slice(6)); if (data.progress !== undefined) setRenderProgress(data.progress); if (data.videoUrl) { receivedVideoUrl = data.videoUrl; setRenderedVideoUrl(data.videoUrl); } if (data.done) isDone = true; } catch { }
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.progress !== undefined) setRenderProgress(data.progress);
+              if (data.progress === 0 && typeof data.message === 'string' && data.message.startsWith('Error:')) {
+                throw new Error(data.message.replace(/^Error:\s*/, ''));
+              }
+              if (data.videoUrl) { receivedVideoUrl = data.videoUrl; setRenderedVideoUrl(data.videoUrl); }
+              if (data.done) isDone = true;
+            } catch (parseErr) {
+              if (parseErr instanceof Error && parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
+            }
           }
         }
         if (isDone) break;
@@ -260,15 +328,20 @@ export default function Home() {
   }
 
   function handlePlayAvatarVideo() {
-    if (!videoUrl) return;
-    if (playbackVideoRef.current) {
-      const video = playbackVideoRef.current;
-      if (isPlaying) { video.pause(); setIsPlaying(false); if (playbackIntervalRef.current) clearInterval(playbackIntervalRef.current); }
-      else { video.play(); setIsPlaying(true); playbackIntervalRef.current = setInterval(() => { if (!video.paused) setCurrentFrame(Math.floor(video.currentTime * 30)); }, 100); }
+    if (!playerRef.current) return;
+    if (isPlaying) {
+      playerRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      playerRef.current.play();
+      setIsPlaying(true);
     }
   }
 
-  function handleSeekVideo(frame: number) { if (playbackVideoRef.current) { playbackVideoRef.current.currentTime = frame / 30; setCurrentFrame(frame); } }
+  function handleSeekVideo(frame: number) {
+    playerRef.current?.seekTo(frame);
+    setCurrentFrame(frame);
+  }
 
   function handleStartDrag(e: React.MouseEvent, info: { x: number; y: number; width: number; height: number }) {
     e.preventDefault(); e.stopPropagation(); if (!frameContainerRef.current) return;
@@ -355,6 +428,7 @@ export default function Home() {
 
   const publishedVideos = savedVideos.filter((v) => v.status === 'published');
   const draftVideos = savedVideos.filter((v) => v.status !== 'published');
+  const avatarPreviewTooLarge = isAvatarTooLargeForPreview(avatarFileSizeMb);
 
   const sidebarItems: { key: SidebarItem; label: string; section: string; badge?: number; locked?: boolean }[] = viewMode === 'superadmin'
     ? [{ key: 'user-management', label: 'User management', section: 'ADMIN' }, { key: 'my-videos', label: 'All videos', section: 'CONTENT' }, { key: 'browse-subjects', label: 'Browse subjects', section: 'CONTENT' }, { key: 'browse-chapters', label: 'Browse chapters', section: 'CONTENT' }, { key: 'manage-avatars', label: 'Manage avatars', section: 'SETTINGS' }]
@@ -531,6 +605,9 @@ export default function Home() {
             <button type="submit" disabled={loading || !script || !selectedAvatar || !selectedVoice} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 px-6 rounded-lg font-semibold text-sm shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all">
               {loading ? (<span className="flex items-center justify-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Generating... {generateProgress}%</span>) : 'Generate Avatar Video'}
             </button>
+            {videoUrl?.startsWith('http') && (
+              <p className="mt-3 text-xs text-zinc-500">Using remote HeyGen avatar URL (streamed, not saved locally).</p>
+            )}
           </form>
           {error && <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3"><p className="text-red-400 text-sm">{error}</p></div>}
           {status && status !== 'completed' && status !== 'failed' && (
@@ -557,15 +634,44 @@ export default function Home() {
           {!renderedVideoUrl && videoUrl && backgroundImage && (
             <div className="space-y-4">
               <div className="text-xs text-indigo-400 mb-1">Preview - Avatar + Background + Script</div>
-              <div className="rounded-lg overflow-hidden border border-white/10">
-                <Player key={`${Date.now()}-${scriptKey}`} ref={playerRef} component={RemotionVideo} durationInFrames={videoDurationInFrames} fps={30} compositionWidth={1920} compositionHeight={1080} style={{ width: '100%', height: 'auto' }} inputProps={{ avatarVideoUrl: videoUrl, backgroundImageUrl: backgroundImage, script, durationInFrames: videoDurationInFrames, infographics, scriptFontSize }} controls />
+              {avatarPreviewTooLarge && (
+                <p className="text-xs text-amber-400 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                  Avatar video skipped in preview ({avatarFileSizeMb} MB) — script, background, and infographics still animate below.
+                </p>
+              )}
+              <div className="rounded-lg overflow-hidden border border-white/10 relative">
+                <Player
+                  key={`${videoUrl}-${scriptKey}-${avatarPreviewTooLarge ? 'no-avatar' : 'full'}`}
+                  ref={playerRef}
+                  component={RemotionVideo}
+                  durationInFrames={videoDurationInFrames}
+                  fps={30}
+                  compositionWidth={1920}
+                  compositionHeight={1080}
+                  style={{ width: '100%', height: 'auto', aspectRatio: '16/9' }}
+                  inputProps={{
+                    avatarVideoUrl: videoUrl,
+                    backgroundImageUrl: backgroundImage,
+                    script,
+                    durationInFrames: videoDurationInFrames,
+                    infographics,
+                    scriptFontSize,
+                    videoTransparency,
+                    avatarPosition,
+                    avatarSize,
+                    omitAvatarVideo: avatarPreviewTooLarge,
+                  }}
+                  controls
+                  onFrameUpdate={setCurrentFrame}
+                />
+                <div className="absolute bottom-2 left-2 bg-black/70 px-2 py-1 rounded text-xs text-white">1920x1080 | {scriptFontSize}px</div>
               </div>
               <div className="bg-[#12121a] rounded-lg p-4 border border-white/10 space-y-3">
                 <h4 className="text-sm font-medium text-zinc-300">Script Settings</h4>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Font Size</label>
-                    <input type="range" min={12} max={500} value={scriptFontSize} onChange={(e) => { setScriptFontSize(Number(e.target.value)); setScriptKey(prev => prev + 1); }} className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer" />
+                    <input type="range" min={12} max={500} value={scriptFontSize} onInput={(e) => { setScriptFontSize(Number((e.target as HTMLInputElement).value)); setScriptKey(prev => prev + 1); }} onChange={(e) => { setScriptFontSize(Number(e.target.value)); setScriptKey(prev => prev + 1); }} className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer" />
                     <div className="flex justify-between text-xs text-zinc-400 mt-1">
                       <span>{scriptFontSize}px</span>
                       <span>Font Size</span>
@@ -579,6 +685,27 @@ export default function Home() {
                     <label className="block text-xs text-zinc-400 mb-1">Left (px)</label>
                     <input type="number" min={0} max={500} value={scriptLeft} onChange={(e) => setScriptLeft(Number(e.target.value))} className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#1a1a24] text-white text-sm" />
                   </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Transparency (%)</label>
+                    <input type="range" min={0} max={100} value={videoTransparency} onInput={(e) => setVideoTransparency(Number((e.target as HTMLInputElement).value))} className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer" />
+                    <div className="flex justify-between text-xs text-zinc-400 mt-1">
+                      <span>{videoTransparency}%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Avatar Position</label>
+                    <select value={avatarPosition} onChange={(e) => { setAvatarPosition(e.target.value as 'left' | 'right'); setScriptKey(prev => prev + 1); }} className="w-full px-3 py-2 rounded-lg border border-white/10 bg-[#1a1a24] text-white text-sm">
+                      <option value="left" className="bg-[#1a1a24]">Left</option>
+                      <option value="right" className="bg-[#1a1a24]">Right</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Avatar Size (%)</label>
+                    <input type="range" min={10} max={50} value={avatarSize} onInput={(e) => { setAvatarSize(Number((e.target as HTMLInputElement).value)); setScriptKey(prev => prev + 1); }} className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer" />
+                    <div className="flex justify-between text-xs text-zinc-400 mt-1">
+                      <span>{avatarSize}%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="border-t border-white/10 pt-4">
@@ -588,9 +715,13 @@ export default function Home() {
                 </div>
                 {showInfographicPanel && (
                   <div className="space-y-4 bg-[#12121a] rounded-lg p-4 border border-white/10">
-                    <div className="relative rounded-lg overflow-hidden border border-white/10">
-                      <video ref={playbackVideoRef} src={videoUrl} className="w-full" onEnded={() => setIsPlaying(false)} />
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-3 py-2 flex items-center gap-3">
+                    <div className="rounded-lg border border-white/10 bg-black/40 p-3 space-y-2">
+                      <p className="text-xs text-zinc-400">
+                        {avatarPreviewTooLarge
+                          ? 'Timeline controls the preview above (avatar omitted; script and infographics still sync).'
+                          : 'Timeline uses the Remotion preview above.'}
+                      </p>
+                      <div className="flex items-center gap-3">
                         <button type="button" onClick={handlePlayAvatarVideo} className="text-white hover:text-indigo-400 transition-colors">
                           {isPlaying ? <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg> : <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}
                         </button>
@@ -611,7 +742,11 @@ export default function Home() {
                       <div className="space-y-2">
                         <label className="block text-xs font-medium text-zinc-400">Drag to place on frame</label>
                         <div ref={frameContainerRef} className="relative w-full rounded-lg overflow-hidden border border-indigo-500/30 bg-black/50 cursor-crosshair" style={{ aspectRatio: '16/9' }}>
-                          <video src={videoUrl} className="w-full h-full object-cover" muted />
+                          {backgroundImage ? (
+                            <img src={backgroundImage} alt="" className="w-full h-full object-cover pointer-events-none" />
+                          ) : (
+                            <div className="w-full h-full bg-zinc-900" />
+                          )}
                           <div className="absolute border-2 border-indigo-400 bg-indigo-400/10 cursor-move hover:border-indigo-300 transition-colors" style={{ left: `${previewInfographic.x}%`, top: `${previewInfographic.y}%`, width: `${previewInfographic.width}%`, height: `${previewInfographic.height}%` }} onMouseDown={(e) => handleStartDrag(e, previewInfographic)}>
                             <img src={previewInfographic.imageUrl} alt="Preview" className="w-full h-full object-contain pointer-events-none" />
                             <div className="absolute -top-4 left-0 text-xs text-indigo-400 font-mono whitespace-nowrap">{formatTime(newInfographicStartFrame)} - {formatTime(newInfographicEndFrame)}</div>
@@ -661,7 +796,7 @@ export default function Home() {
                 )}
               </div>
               <button onClick={handleRenderVideo} disabled={rendering} className="w-full bg-green-600 hover:bg-green-500 text-white py-3 px-6 rounded-lg font-semibold shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm">
-                {rendering ? (<span className="flex items-center justify-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Rendering... {renderProgress}%</span>) : (<span className="flex items-center justify-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>Render Final Video (MP4)</span>)}
+                {rendering ? (<span className="flex items-center justify-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Rendering... {renderProgress}%</span>) : (<span className="flex items-center justify-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>Render Final Video</span>)}
               </button>
               {rendering && <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-green-500 rounded-full transition-all duration-300" style={{ width: `${renderProgress}%` }} /></div>}
             </div>
