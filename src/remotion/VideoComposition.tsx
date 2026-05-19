@@ -48,8 +48,10 @@ export const RemotionVideo: React.FC<{
   const { width, height } = useVideoConfig();
 
   const avatarWidth = width * (avatarSize / 100);
-  const scriptAreaWidth = width * 0.5;
-  const scriptLeftPos = avatarWidth + 60;
+  const scriptBoxWidth = 850;
+  const scriptMarginRight = 28;
+  const scriptShiftLeft = 100;
+  const scriptLeftPos = width - scriptBoxWidth - scriptMarginRight - scriptShiftLeft;
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
@@ -131,7 +133,7 @@ export const RemotionVideo: React.FC<{
         <ScriptDisplay
           script={script}
           avatarWidth={0}
-          scriptAreaWidth={scriptAreaWidth}
+          scriptAreaWidth={scriptBoxWidth}
           height={height}
           fontSize={scriptFontSize}
           left={scriptLeftPos}
