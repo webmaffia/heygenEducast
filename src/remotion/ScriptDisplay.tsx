@@ -7,7 +7,9 @@ export interface LineTiming {
   text: string;
 }
 
-const CONTENT_FADE_IN_FRAMES = 12; // quick fade-in from first frame (no start delay)
+/** Fixed vertical anchor for script — never moves during the video. */
+const SCRIPT_ANCHOR_TOP = 300;
+const CONTENT_FADE_IN_FRAMES = 12;
 const LINE_FADE_OUT_FRAMES = 24;
 
 export const ScriptDisplay: React.FC<{
@@ -18,11 +20,15 @@ export const ScriptDisplay: React.FC<{
   fontSize?: number;
   autoScroll?: boolean;
   left?: number;
-}> = ({ script, scriptAreaWidth, height, fontSize = 28, left = 0 }) => {
+  scriptTop?: number;
+}> = ({ script, scriptAreaWidth, height, fontSize = 28, left = 0, scriptTop = 0 }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const fs = fontSize;
   const LINE_HEIGHT = fs + 22;
+
+  const viewportTop = scriptTop + SCRIPT_ANCHOR_TOP;
+  const viewportHeight = Math.max(240, height - SCRIPT_ANCHOR_TOP - 80);
 
   const allLines = useMemo(() => {
     const paragraphs = script.split(/\n\n+/).filter((p) => p.trim().length > 0);
@@ -68,10 +74,9 @@ export const ScriptDisplay: React.FC<{
     });
   }, [allLines, durationInFrames]);
 
-  const visibleLineSlots = Math.max(4, Math.floor((height - 200) / LINE_HEIGHT));
+  const visibleLineSlots = Math.max(4, Math.floor(viewportHeight / LINE_HEIGHT));
   const maxScrollIndex = Math.max(0, allLines.length - visibleLineSlots);
 
-  /** Scroll forward in sync with each line finishing — keeps upcoming lines in view. */
   const scrollIndex = useMemo(() => {
     if (!lineTimings.length) return 0;
 
@@ -112,55 +117,33 @@ export const ScriptDisplay: React.FC<{
     },
   );
 
-  const getLineStyle = (lineIndex: number, isEmpty: boolean) => {
+  const getLineOpacity = (lineIndex: number, isEmpty: boolean) => {
     const timing = lineTimings[lineIndex];
-    if (!timing || isEmpty) {
-      return { opacity: 1, translateY: 0 };
-    }
+    if (!timing || isEmpty) return 1;
 
-    if (frame < timing.endFrame) {
-      return { opacity: 1, translateY: 0 };
-    }
+    if (frame < timing.endFrame) return 1;
 
     const fadeOutEnd = timing.endFrame + LINE_FADE_OUT_FRAMES;
-    const lineOpacity = interpolate(
-      frame,
-      [timing.endFrame, fadeOutEnd],
-      [1, 0],
-      {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
-        easing: Easing.inOut(Easing.cubic),
-      },
-    );
-
-    const translateY = interpolate(
-      frame,
-      [timing.endFrame, fadeOutEnd],
-      [0, -10],
-      {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
-        easing: Easing.inOut(Easing.cubic),
-      },
-    );
-
-    return { opacity: lineOpacity, translateY };
+    return interpolate(frame, [timing.endFrame, fadeOutEnd], [1, 0], {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+      easing: Easing.inOut(Easing.cubic),
+    });
   };
 
   if (!script || allLines.length === 0) return null;
+
+  const contentHeight = allLines.length * LINE_HEIGHT;
 
   return (
     <div
       style={{
         position: 'absolute',
         left,
-        top: 0,
+        top: viewportTop,
         width: scriptAreaWidth,
-        height: height + 200,
-        paddingTop: 300,
+        height: viewportHeight,
         paddingLeft: 40,
-        paddingBottom: 100,
         boxSizing: 'border-box',
         overflow: 'hidden',
         zIndex: 4,
@@ -168,25 +151,30 @@ export const ScriptDisplay: React.FC<{
     >
       <div
         style={{
+          position: 'relative',
+          height: contentHeight,
           opacity: blockOpacity,
           transform: `translateY(${scrollOffsetY}px)`,
         }}
       >
         {allLines.map((lineWords, lineIndex) => {
           const isEmpty = lineWords.length === 0;
-          const { opacity, translateY } = getLineStyle(lineIndex, isEmpty);
+          const lineOpacity = getLineOpacity(lineIndex, isEmpty);
 
           return (
             <div
               key={lineIndex}
               style={{
+                position: 'absolute',
+                left: 0,
+                top: lineIndex * LINE_HEIGHT,
+                width: '100%',
                 fontFamily: 'Inter, Arial, sans-serif',
                 lineHeight: `${LINE_HEIGHT}px`,
-                minHeight: LINE_HEIGHT,
+                height: LINE_HEIGHT,
                 textAlign: 'left',
-                opacity,
-                transform: `translateY(${translateY}px)`,
-                marginBottom: isEmpty ? `${LINE_HEIGHT}px` : '0px',
+                opacity: lineOpacity,
+                pointerEvents: 'none',
               }}
             >
               {!isEmpty &&
@@ -203,7 +191,6 @@ export const ScriptDisplay: React.FC<{
                     {word}
                   </span>
                 ))}
-              {isEmpty && <div style={{ height: LINE_HEIGHT }} />}
             </div>
           );
         })}

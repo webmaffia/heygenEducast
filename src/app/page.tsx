@@ -265,7 +265,7 @@ export default function Home() {
       if (probed) durationForRender = probed;
 
       const response = await fetch('/api/render', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarVideoUrl: videoUrl, backgroundImageUrl: backgroundImage, script, durationInFrames: durationForRender, infographics, scriptFontSize, videoTransparency, videoId }),
+        body: JSON.stringify({ avatarVideoUrl: videoUrl, backgroundImageUrl: backgroundImage, script, durationInFrames: durationForRender, infographics, scriptFontSize, scriptTop, scriptLeft, videoTransparency, videoId }),
       });
       if (!response.ok) throw new Error(`Render failed: ${response.status}`);
       const reader = response.body?.getReader(); if (!reader) throw new Error('No response body');
@@ -656,6 +656,8 @@ export default function Home() {
                     durationInFrames: videoDurationInFrames,
                     infographics,
                     scriptFontSize,
+                    scriptTop,
+                    scriptLeft,
                     videoTransparency,
                     avatarPosition,
                     avatarSize,

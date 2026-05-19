@@ -302,6 +302,8 @@ export async function POST(request: NextRequest) {
         durationInFrames,
         infographics,
         scriptFontSize = 28,
+        scriptTop = 0,
+        scriptLeft = 40,
         videoTransparency = 65,
         videoId: heygenVideoId,
       } = body;
@@ -360,6 +362,8 @@ export async function POST(request: NextRequest) {
         durationInFrames: frames,
         infographics: preparedInfographics,
         scriptFontSize: fontSize,
+        scriptTop,
+        scriptLeft,
         videoTransparency,
       };
 

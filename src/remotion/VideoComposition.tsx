@@ -135,6 +135,7 @@ export const RemotionVideo: React.FC<{
           height={height}
           fontSize={scriptFontSize}
           left={scriptLeftPos}
+          scriptTop={scriptTop}
         />
       </Sequence>
 
