@@ -23,7 +23,7 @@ async function extractPdfText(file: File): Promise<string> {
 }
 
 interface Avatar { avatar_id: string; avatar_name: string; preview_image_url: string; premium: boolean; }
-interface Voice { voice_id: string; name: string; language: string; gender: string; }
+interface Voice { voice_id: string; name: string; language: string; gender: string; preview_audio?: string; }
 interface Subject { id: string; name: string; }
 interface Chapter { id: string; subject_id: string; name: string; }
 interface User { id: string; name: string; email: string; role: string; status: string; avatar: string | null; created_at: string; updated_at: string; }
@@ -111,6 +111,10 @@ export default function Home() {
   const [editUserEmail, setEditUserEmail] = useState('');
   const [editUserRole, setEditUserRole] = useState('user');
   const [editUserStatus, setEditUserStatus] = useState('active');
+  const [showAvatarPopup, setShowAvatarPopup] = useState(false);
+  const [showVoicePopup, setShowVoicePopup] = useState(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const [showConfirmGenerate, setShowConfirmGenerate] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -250,8 +254,8 @@ export default function Home() {
     } catch { setError('Failed to check video status'); setLoading(false); }
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setError(null); setVideoUrl(null); setVideoId(null); setRenderedVideoUrl(null); setInfographics([]); setLoading(true);
+  async function handleConfirmGenerate() {
+    setShowConfirmGenerate(false); setError(null); setVideoUrl(null); setVideoId(null); setRenderedVideoUrl(null); setInfographics([]); setLoading(true);
     try {
       const res = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ avatar_id: selectedAvatar, voice_id: selectedVoice, input_text: scriptToPlainText(script), title: document?.name || 'Generated Video', type: 'webm', avatar_style: 'normal', dimension: { width: 1080, height: 1920 } }),
@@ -260,6 +264,10 @@ export default function Home() {
       if (data.error) throw new Error(data.error);
       setVideoId(data.data.video_id); checkStatus(data.data.video_id);
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to generate video'); setLoading(false); }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setShowConfirmGenerate(true);
   }
 
   async function handleRenderVideo() {
@@ -595,26 +603,127 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Avatar</label>
-                <select value={selectedAvatar} onChange={(e) => setSelectedAvatar(e.target.value)} required className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none cursor-pointer text-sm">
-                  <option value="" className="bg-[#1a1a24]">Select an avatar</option>
-                  {avatars.map((avatar, index) => (<option key={`${avatar.avatar_id}-${index}`} value={avatar.avatar_id} className="bg-[#1a1a24]">{avatar.avatar_name}</option>))}
-                </select>
+                <button type="button" onClick={() => setShowAvatarPopup(true)} className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm flex items-center justify-between">
+                  {selectedAvatar ? (
+                    <span className="flex items-center gap-2">
+                      {avatars.find(a => a.avatar_id === selectedAvatar)?.preview_image_url && (
+                        <img src={avatars.find(a => a.avatar_id === selectedAvatar)?.preview_image_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                      )}
+                      {avatars.find(a => a.avatar_id === selectedAvatar)?.avatar_name || 'Selected Avatar'}
+                    </span>
+                  ) : (
+                    <span className="text-zinc-500">Select an avatar</span>
+                  )}
+                  <svg className="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </button>
               </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Voice</label>
-                <select value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)} required className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all appearance-none cursor-pointer text-sm">
-                  <option value="" className="bg-[#1a1a24]">Select a voice</option>
-                  {voices.map((voice, index) => (<option key={`${voice.voice_id}-${index}`} value={voice.voice_id} className="bg-[#1a1a24]">{voice.name}</option>))}
-                </select>
+                <button type="button" onClick={() => setShowVoicePopup(true)} className="w-full px-4 py-3 rounded-lg border border-white/10 bg-[#12121a] text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all text-sm flex items-center justify-between">
+                  {selectedVoice ? (
+                    <span>{voices.find(v => v.voice_id === selectedVoice)?.name || 'Selected Voice'}</span>
+                  ) : (
+                    <span className="text-zinc-500">Select a voice</span>
+                  )}
+                  <svg className="w-5 h-5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </button>
               </div>
             </div>
-            <button type="submit" disabled={loading || !script || !selectedAvatar || !selectedVoice} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 px-6 rounded-lg font-semibold text-sm shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all">
+            <button type="button" disabled={loading || !script || !selectedAvatar || !selectedVoice} onClick={() => setShowConfirmGenerate(true)} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 px-6 rounded-lg font-semibold text-sm shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all">
               {loading ? (<span className="flex items-center justify-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Generating... {generateProgress}%</span>) : 'Generate Avatar Video'}
             </button>
             {videoUrl?.startsWith('http') && (
               <p className="mt-3 text-xs text-zinc-500">Using remote HeyGen avatar URL (streamed, not saved locally).</p>
             )}
           </form>
+
+          {showAvatarPopup && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAvatarPopup(false)}>
+              <div className="bg-[#1a1a24] rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-white">Select Avatar</h3>
+                  <button onClick={() => setShowAvatarPopup(false)} className="text-zinc-400 hover:text-white transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-4 pr-2">
+                  {avatars.map((avatar, index) => (
+                    <button key={`${avatar.avatar_id}-${index}`} onClick={() => { setSelectedAvatar(avatar.avatar_id); setShowAvatarPopup(false); }} className={`p-3 rounded-xl border-2 transition-all text-left ${selectedAvatar === avatar.avatar_id ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 hover:border-white/30 bg-[#12121a]'}`}>
+                      {avatar.preview_image_url && <img src={avatar.preview_image_url} alt={avatar.avatar_name} className="w-full h-32 object-cover rounded-lg mb-2" />}
+                      <div className="text-white text-sm font-medium">{avatar.avatar_name}</div>
+                      {avatar.premium && <span className="text-xs text-amber-400">Premium</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showVoicePopup && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowVoicePopup(false)}>
+              <div className="bg-[#1a1a24] rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-white">Select Voice</h3>
+                  <button onClick={() => setShowVoicePopup(false)} className="text-zinc-400 hover:text-white transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  {voices.map((voice, index) => (
+                    <div key={`${voice.voice_id}-${index}`} className={`p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${selectedVoice === voice.voice_id ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 hover:border-white/30 bg-[#12121a]'}`}>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); if (playingVoiceId === voice.voice_id) { setPlayingVoiceId(null); } else { if (voice.preview_audio) { const audio = new Audio(voice.preview_audio); audio.play().catch(() => {}); setPlayingVoiceId(voice.voice_id); audio.onended = () => setPlayingVoiceId(null); } else { window.speechSynthesis.cancel(); const utt = new SpeechSynthesisUtterance('Hello, this is a sample voice preview'); window.speechSynthesis.speak(utt); setPlayingVoiceId(voice.voice_id); setTimeout(() => setPlayingVoiceId(null), 3000); } } }} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${playingVoiceId === voice.voice_id ? 'bg-indigo-500 text-white' : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'}`}>
+                        {playingVoiceId === voice.voice_id ? (
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
+                        ) : (
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        )}
+                      </button>
+                      <button type="button" onClick={() => { setSelectedVoice(voice.voice_id); setShowVoicePopup(false); }} className="flex-1 text-left">
+                        <div className="text-white font-medium">{voice.name}</div>
+                        <div className="text-zinc-400 text-xs">{voice.language} · {voice.gender}</div>
+                      </button>
+                      {selectedVoice === voice.voice_id && (
+                        <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showConfirmGenerate && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowConfirmGenerate(false)}>
+              <div className="bg-[#1a1a24] rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  </div>
+                  <h3 className="text-xl font-semibold text-white">Confirm Video Generation</h3>
+                  <p className="text-zinc-400 text-sm mt-2">This will use credits to generate your avatar video.</p>
+                </div>
+                <div className="bg-[#12121a] rounded-xl p-4 mb-6 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-zinc-500 text-sm w-20">Script:</span>
+                    <span className="text-white text-sm">{script.slice(0, 50)}{script.length > 50 ? '...' : ''}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-zinc-500 text-sm w-20">Avatar:</span>
+                    <span className="text-white text-sm">{avatars.find(a => a.avatar_id === selectedAvatar)?.avatar_name || 'Not selected'}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-zinc-500 text-sm w-20">Voice:</span>
+                    <span className="text-white text-sm">{voices.find(v => v.voice_id === selectedVoice)?.name || 'Not selected'}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowConfirmGenerate(false)} className="flex-1 py-3 px-4 rounded-lg border border-white/10 text-white font-medium hover:bg-white/5 transition-all">Cancel</button>
+                  <button onClick={handleConfirmGenerate} className="flex-1 py-3 px-4 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-all">Yes, Generate</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {error && <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3"><p className="text-red-400 text-sm">{error}</p></div>}
           {status && status !== 'completed' && status !== 'failed' && (
             <div className="mt-4 bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
@@ -871,6 +980,6 @@ export default function Home() {
         </header>
         <div className="flex-1 p-4 lg:p-6 overflow-y-auto">{renderMainContent()}</div>
       </main>
-l    </div>
+    </div>
   );
 }
