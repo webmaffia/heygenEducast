@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
+import { scriptToPlainText } from '../lib/script-format';
 
 export interface LineTiming {
   startFrame: number;
@@ -39,7 +40,8 @@ export const ScriptDisplay: React.FC<{
   const viewportHeight = BOX_CONTENT_HEIGHT;
 
   const allLines = useMemo(() => {
-    const paragraphs = script.split(/\n\n+/).filter((p) => p.trim().length > 0);
+    const plainScript = scriptToPlainText(script);
+    const paragraphs = plainScript.split(/\n\n+/).filter((p) => p.trim().length > 0);
     const charsPerLine = Math.max(12, Math.floor(innerWidth / (fs * 0.52)));
     const lines: string[][] = [];
     for (let p = 0; p < paragraphs.length; p++) {

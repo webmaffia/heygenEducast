@@ -5,6 +5,7 @@ import { Player, PlayerRef } from '@remotion/player';
 import { RemotionVideo } from '@/remotion/VideoComposition';
 import { Infographic } from '@/remotion/InfographicsOverlay';
 import { isAvatarTooLargeForPreview } from '@/lib/avatar-video';
+import { scriptToPlainText } from '@/lib/script-format';
 
 async function extractPdfText(file: File): Promise<string> {
   const pdfjsLib = await import('pdfjs-dist');
@@ -143,6 +144,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!script.includes('<')) return;
+    setScript(scriptToPlainText(script));
+  }, [script]);
+
+  useEffect(() => {
     return () => {
       if (durationProbeRef.current) {
         durationProbeRef.current.removeAttribute('src');
@@ -248,7 +254,7 @@ export default function Home() {
     e.preventDefault(); setError(null); setVideoUrl(null); setVideoId(null); setRenderedVideoUrl(null); setInfographics([]); setLoading(true);
     try {
       const res = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatar_id: selectedAvatar, voice_id: selectedVoice, input_text: script, title: document?.name || 'Generated Video', type: 'webm', avatar_style: 'normal', dimension: { width: 1080, height: 1920 } }),
+        body: JSON.stringify({ avatar_id: selectedAvatar, voice_id: selectedVoice, input_text: scriptToPlainText(script), title: document?.name || 'Generated Video', type: 'webm', avatar_style: 'normal', dimension: { width: 1080, height: 1920 } }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -375,7 +381,7 @@ export default function Home() {
   }
 
   async function loadSavedVideo(video: DbVideo) {
-    setScript(video.script); setBackgroundImage(video.background_image); setSelectedAvatar(video.selected_avatar || ''); setSelectedVoice(video.selected_voice || '');
+    setScript(scriptToPlainText(video.script || '')); setBackgroundImage(video.background_image); setSelectedAvatar(video.selected_avatar || ''); setSelectedVoice(video.selected_voice || '');
     setVideoUrl(video.avatar_video_url); setRenderedVideoUrl(video.rendered_video_url || null); setVideoDurationInFrames(video.video_duration_in_frames);
     setSelectedSubjectId(video.subject_id || ''); setSelectedChapterId(video.chapter_id || '');
     try { setInfographics(JSON.parse(video.infographics || '[]')); } catch { setInfographics([]); }
@@ -810,7 +816,7 @@ export default function Home() {
                 <img src={backgroundImage} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute left-[30%] top-0 w-[70%] h-full bg-black/60" />
                 <div className="absolute left-0 top-0 w-[30%] h-full flex items-center justify-center"><div className="text-zinc-500 text-xs text-center px-2">Avatar will appear here</div></div>
-                <div className="absolute left-[30%] top-0 w-[70%] h-full p-4 overflow-hidden"><div className="text-white text-xs leading-relaxed line-clamp-4">{script}</div></div>
+                <div className="absolute left-[30%] top-0 w-[70%] h-full p-4 overflow-hidden"><div className="text-white text-xs leading-relaxed line-clamp-4">{scriptToPlainText(script)}</div></div>
               </div>
               <button onClick={handleSubmit} disabled={loading || !script || !selectedAvatar || !selectedVoice} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 px-6 rounded-lg font-medium shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm">{loading ? 'Generating Avatar...' : 'Generate Avatar Video'}</button>
             </div>
